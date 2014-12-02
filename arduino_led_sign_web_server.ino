@@ -128,9 +128,9 @@ void loop()
     lcd_print(14, 1, " "); // clear error code
   }
   lcd_print(13, 1, String(status_code)); // print error code
-  lcd_print(0, 1, String(num_requests) + "q" );    // num requests
-  lcd_print(4, 1, String(num_bytes_sent) + "s");   // num bytes sent
-  lcd_print(9, 1, String(num_bytes_rec) + "r");    // num bytes received
+  lcd_print(0, 1, "q" + String(num_requests) );      // num requests
+  lcd_print(4, 1, "s" + String(num_bytes_sent) );    // num bytes sent
+  lcd_print(9, 1, "r" + String(num_bytes_rec));      // num bytes received
 
   if (client)
   {
