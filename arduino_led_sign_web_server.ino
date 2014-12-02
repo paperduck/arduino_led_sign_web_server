@@ -12,11 +12,13 @@ LED Adapter
  - xxx triple-check memory allocation + deallocation
  */
 
+/****************************************************************/
 #include <LiquidCrystal.h>
 #include <SPI.h>
 #include <Ethernet.h>
 #include <SD.h>
 
+/****************************************************************/
 //Create LCD screen instance ***
 LiquidCrystal lcd(A5, A4, A3, A2, A1, A0); // (rs, enable, d4, d5, d6, d7) 
 
@@ -46,28 +48,34 @@ String                     file_path_name_buf_string = ""; // xxx consider using
 char *                     file_path_name_buf; // feed into SD.exists()
 File                       f; // the file to be served to the client
 boolean                    file_ready = false;
-char*                      http_header = ""; // header to send to client, including final CRLF
+String                     http_response_header = ""; // header to send to client, including final CRLF
 byte                       cur_byte;          // byte read in from client
 boolean                    get_or_post = false;        // false=GET true=POST
 String                     token = "";      // to hold bytes read from client
 boolean                    receive_or_send = false; // 0=receive 1=send
 boolean                    appending_token = true; // false=no the first space; true=this is the first space
-
+unsigned short int         cur_file_exists_attempts  = 0;
+unsigned short int         max_file_exists_attemps = 5;
+unsigned short int         cur_file_open_attempts = 0;
+unsigned short int         max_file_open_attempts = 5;
+/****************************************************************/
 void lcd_print(int x, int y, String msg)
 {
   lcd.setCursor(x, y);
   lcd.print(msg);
 }
 
+/****************************************************************/
 void lcd_print(int x, int y, IPAddress msg)
 {
   lcd.setCursor(x, y);
   lcd.print(msg);
 }
 
+/****************************************************************/
 // by David A. Mellis / Rob Faludi http://www.faludi.com
 int availableMemory() {
-  int size = 2048; // Use 2048 with ATmega328
+  int size = 9999; // Use 2048 with ATmega328
   byte *buf;
   while ((buf = (byte *) malloc(--size)) == NULL)
     ;
@@ -75,6 +83,7 @@ int availableMemory() {
   return size;
 }
 
+/****************************************************************/
 void setup()
 {
   Serial.begin(9600); 
@@ -112,6 +121,7 @@ void setup()
   lcd.clear();
 }
 
+/****************************************************************/
 void loop()
 {
   //  if (millis() - time_of_last_serial_debug_print > 100)
@@ -275,47 +285,82 @@ void loop()
     else
     {
       // sending data to client(s)
-      num_bytes_sent++;
 
       //server.write(cur_byte);   
 
-      Serial.print("attempting to serve ");
-      Serial.print(String(file_path_name_buf));
-      Serial.print("\n");
-      
-      // Serve the file requested.
-      if (SD.exists(file_path_name_buf))
+      //      Serial.print("attempting to serve ");
+      //      Serial.print(String(file_path_name_buf));
+      //      Serial.print("\n");
+
+      if (!file_ready)
       {
-        lcd_print(6, 0, "sd+");
-        f = SD.open(file_path_name_buf, FILE_READ);
-        if (!f)
+        if (!cur_file_exists_attempts < max_file_exists_attemps)
         {
-          // error
-          lcd_print(4,0, "f-"); 
+          cur_file_exists_attempts++;
+          if (SD.exists(file_path_name_buf))
+          {
+            lcd_print(6, 0, "sd+");
+            if(!cur_file_open_attempts < max_file_open_attempts)
+            {
+              cur_file_open_attempts++;
+              f = SD.open(file_path_name_buf, FILE_READ);
+              if (f) // evaluates to false if file couldn't be opened ~ http://arduino.cc/en/Reference/SDopen
+              {
+                file_ready = true; 
+                lcd_print(4,0, "f+"); 
+                Serial.print("file is ready\n");
+              }
+              else
+              {
+                ; // xxx   file failed to open
+                lcd_print(4,0, "f-"); 
+                Serial.print("file failed to open\n");
+              }
+            }
+            else
+            {
+              ; // xxx  open attempts exceeded 
+              Serial.print("open attempts exceeded\n");
+            }
+          }
+          else
+          {
+            ; // xxx  file doesn't exist 
+            lcd_print(6, 0, "sd-");         
+            Serial.print("HTTP/1.1 404 Not Found\n");  // response header for file not found
+          }
         }
         else
         {
-          lcd_print(4,0, "f+"); 
-          server.println("HTTP/1.1 200 OK");
-          server.println("Content-Type: text/html");
-          server.println("Content-Length: " + String(f.size()) + "\r\n");
-          while (f.available())
-          {
-            server.write(f.read()); 
-          }
+          // xxx  SD.exists() attempts exceeded 
+          Serial.print("SD.exists() attempts exceeded\n");
         }
       }
       else
       {
-        lcd_print(6, 0, "sd-");
-        server.println("HTTP/1.1 404 Not Found\r\n\r\n");
-      }
+        //        // xxx  consider different boilerplate headers
+        //        http_response_header = "HTTP/1.1 200 OK\r\n";
+        //        http_response_header += "Content-Type: text/html\r\n";
+        //        http_response_header += "Content-Length: " + String(f.size()) + "\r\n");
 
-
-      // if done sending, disconnect the client
-      if (client.connected())
-      {
-        client.stop();  // disconnect the client
+        // file is ready, so send a byte
+        if (f.available())
+        {
+          // read a byte, send it
+          server.write(f.read()); 
+          num_bytes_sent++;  
+        }
+        else
+        {
+          Serial.print("closing file...\n");
+          // nothing to read, so close file and finish up response
+          f.close();      
+          if (client.connected())
+          {
+            client.stop();  // disconnect the client
+          }
+          receive_or_send = false;
+        }
       }
     }
   }
@@ -328,6 +373,13 @@ void loop()
     client = server.available(); 
   }
 }
+
+
+
+
+
+
+
 
 
 
