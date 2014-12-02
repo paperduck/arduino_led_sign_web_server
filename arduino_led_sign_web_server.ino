@@ -125,7 +125,7 @@ void loop()
   //lcd_print(0, 0, "xxx");
   if (status_code < 10)
   {
-    lcd_print(14, 1, " "); // clear error code
+    lcd_print(14, 1, " "); // clear error code 
   }
   lcd_print(13, 1, String(status_code)); // print error code
   lcd_print(0, 1, "q" + String(num_requests) );      // num requests
