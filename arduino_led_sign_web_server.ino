@@ -32,7 +32,7 @@ EthernetServer server = EthernetServer(server_port);
 EthernetClient client = EthernetClient();
 
 // SD card ***
-File                       f; // file to read from SD card
+File *                     f; // file to read from SD card
 
 // diagnostic ***
 unsigned short int         num_requests = 0;   // counter for requests
@@ -41,7 +41,10 @@ unsigned long              num_bytes_rec = 0;  // counter for num bytes received
 unsigned short int         status_code = 0;
 String                     serial_debug_string = "";
 unsigned long              time_of_last_serial_debug_print = millis();
-unsigned short int         delay_ = 500;
+unsigned short int         d1 = 100;
+unsigned short int         d5 = 500;
+int                        memory_available = 0;
+int                        memory_available_min = 9999;
 
 // Parsing, Flags, State ***
 byte                       cur_byte;
@@ -49,20 +52,26 @@ String                     token = "";
 unsigned long              cur_line_num = 1;   // 1-based. 0 means no lines yet. (lines of incoming header)
 unsigned short int         cur_token_index = 0;  // 0-based. e.g. GET will have token index 0. Filename 1. HTTP version 2.
 String                     request_type = ""; // GET, POST
-String                     file_path_name_args = ""; // file requested + args
+String                     file_path_name = ""; // file requested + args
+char *                     file_path_name_buf; // char* for passing into SD.exists(), SD.open()
+//String                     file_path_name_trimmed = ""; // file requested + args
 String                     http_version_client = ""; // HTTP version specified by client
 boolean                    appending_token = true;
+long                       index_of; // stores result of String.indexOf()
+
 
 /****************************************************************/
-String get_response_header(String response_header_type, File f) // xxx   Make sure f is a pointer, to preserve memory.
+String get_response_header(String response_header_type, File * f) // xxx   Make sure f is a pointer, to preserve memory.
 {  
   // 'response_header_type' should be a media type, e.g. "image/png", "text/html".
   // http://en.wikipedia.org/wiki/Internet_media_type#Type_image
-  String line_1 = "HTTP/1.1 200 OK\r\n";
-  String line_2 = "Content-Type: " + response_header_type + "\r\n";
-  String line_3 = "Content-Length: " + String(f.size()) + "\r\n";
+  String line_1 = String("HTTP/1.1 200 OK\r\n");
+  String line_2 = String("Content-Type: ") + response_header_type + String("\r\n");
+  String line_3 = String("Content-Length: ") + String(f->size()) + String("\r\n");
 
-  return line_1 + line_2 + line_3;
+  Serial.print( String(line_1) + String(line_2) + String(line_3) );
+
+  return String(line_1) + String(line_2) + String(line_3);
 }
 
 /****************************************************************/
@@ -82,7 +91,7 @@ void lcd_print(int x, int y, IPAddress msg)
 /****************************************************************/
 // by David A. Mellis / Rob Faludi http://www.faludi.com
 int availableMemory() {
-  int size = 9999; // Use 2048 with ATmega328
+  int size = 2048; // Use 2048 with ATmega328
   byte *buf;
   while ((buf = (byte *) malloc(--size)) == NULL)
     ;
@@ -98,40 +107,42 @@ void setup()
   // LCD screen
   lcd.begin(16,2);
 
-  lcd_print(0, 0, "starting up...");
+  lcd_print(0, 0, ".");
 
   // Ethernet
   while ( ! Ethernet.begin(mac) )
   {
     lcd.clear();
-    lcd_print(0,0,"Ethernet failure");  
-    delay(delay_);
+    lcd_print(0,0,"E !!");  
+    delay(d1);
   }
   server.begin(); // starts listening for incoming connections
   lcd.clear();
-  lcd_print(0,0,"Ethernet on.");     
-  delay(delay_);
+  lcd_print(0,0,"E  ok");     
+  delay(d5);
   lcd.clear();
   lcd_print(0,0, Ethernet.localIP()); 
-  delay(delay_);
+  delay(d5);
+
   // SD card
+  f = (File *)malloc(sizeof(File));
   pinMode(10, OUTPUT);
   while ( ! SD.begin(4) )
   {
     lcd.clear();
-    lcd_print(0,0,"SD failure.     "); 
-    delay(delay_);
+    lcd_print(0,0,"SD !!"); 
+    delay(d1);
   }
   lcd.clear();
-  lcd_print(0,0,"SD initialized. "); 
-  delay(delay_);  
+  lcd_print(0,0,"SD ok"); 
+  delay(d5);  
   lcd.clear();
 }
 
 /****************************************************************/
 void loop()
 {
-  //  if (millis() - time_of_last_serial_debug_print > delay_)
+  //  if (millis() - time_of_last_serial_debug_print > d1)
   //  {
   //    Serial.print(serial_debug_string);
   //    time_of_last_serial_debug_print = millis();
@@ -139,31 +150,32 @@ void loop()
   //    serial_debug_string = "";
   //  }
 
-  lcd_print(0, 0, String(availableMemory()));
-  if (status_code < 10)
+  memory_available = availableMemory();
+  if (memory_available < memory_available_min)
   {
-    lcd_print(14, 1, " "); // clear error code 
+    memory_available_min = memory_available;
+    lcd_print(0, 0, "    ");
   }
-  lcd_print(13, 1, String(status_code)); // print error code
-  lcd_print(0, 1, "q" + String(num_requests) );      // num requests
-  lcd_print(4, 1, "s" + String(num_bytes_sent) );    // num bytes sent
-  lcd_print(9, 1, "r" + String(num_bytes_rec));      // num bytes received
+  lcd_print(0, 0, String( memory_available_min ));  
+  //  if (status_code < 10)
+  //  {
+  //    lcd_print(14, 1, " "); // clear error code 
+  //  }
+  //  lcd_print(13, 1, String(status_code)); // print error code
+  //  lcd_print(0, 1, "q" + String(num_requests) );      // num requests
+  //  lcd_print(4, 1, "s" + String(num_bytes_sent) );    // num bytes sent
+  //  lcd_print(9, 1, "r" + String(num_bytes_rec));      // num bytes received
 
   if (client)
   {
     lcd_print(15, 1, "c");
-
+    appending_token = true;
+    cur_line_num = 1;
+    cur_token_index = 0;
     // read in all data from client, then process it.
     while (client.available())
-      //cur_byte = ' ';
-      //while(cur_byte != 0xFF)
     {
       cur_byte = client.read();
-
-      // xxx  debugging
-      //      server.write(cur_byte); 
-      //      Serial.print(char(cur_byte));
-      //      continue;
 
       if (char(cur_byte) == char(' '))
       {
@@ -180,12 +192,16 @@ void loop()
             case 0:
               // request type (GET, POST, ...)
               request_type = token;
-              Serial.print("1:0 token = " + token + "\n");
+              //              Serial.print("1:0 token = ");
+              //              Serial.print(token);
+              //              Serial.print("\n");
               break; 
             case 1:
               // file requested
-              file_path_name_args = token;
-              Serial.print("1:1 token = " + token + "\n");
+              file_path_name = token;
+              //              Serial.print("1:1 token = ");
+              //              Serial.print(token);
+              //              Serial.print("\n");
               break; 
             case 2:
               // http version
@@ -207,7 +223,7 @@ void loop()
       }
       else if (char(cur_byte) == char('\r'))
       {
-        Serial.print("  \\r\n");
+        //        Serial.print("  \\r\n");
         // carriage return
         if (appending_token)
         {
@@ -220,21 +236,23 @@ void loop()
             {
             case 2:
               http_version_client = token;
-              Serial.print("1:2 token = " + token + "\n");
+              //              Serial.print("1:2 token = ");
+              //              Serial.print(token);
+              //              Serial.print("\n");
               break; 
             default:
               // 400 (Bad Request)
-              Serial.print("1:");
-              Serial.print(cur_token_index);
-              Serial.print("\n");
+              //              Serial.print("1:");
+              //              Serial.print(cur_token_index);
+              //              Serial.print("\n");
               // xxx
               break; 
             }
           default:
-            Serial.print(cur_line_num);
-            Serial.print(":");
-            Serial.print(cur_token_index);
-            Serial.print("\n");
+            //            Serial.print(cur_line_num);
+            //            Serial.print(":");
+            //            Serial.print(cur_token_index);
+            //            Serial.print("\n");
             break;
           }
         }
@@ -242,7 +260,7 @@ void loop()
       else if (char(cur_byte) == char('\n'))
       {
         // newline
-        Serial.print("  \\n\n");
+        //        Serial.print("  \\n\n");
         cur_line_num ++;
         cur_token_index = 0;
       }
@@ -264,26 +282,63 @@ void loop()
     // send response
 
       // parse out arguments in file path
-    ;
+    index_of = file_path_name.indexOf("?", 0);
+    //    Serial.print("index_of = ");
+    //    Serial.print(index_of + String("\n"));
+    //    Serial.print(String("old filepath = ") + file_path_name + String("\n") );
+    if (index_of > -1)
+    {
+      // extract arguments  xxx
+      file_path_name = file_path_name.substring(0, index_of); 
+      //      Serial.print( String("new filepath = ") + file_path_name + String("\n") );
+    }
 
     // retrieve the requested file
-    ;
+    file_path_name_buf = (char*)malloc( sizeof(char) * (file_path_name.length() + 1 ));
+    file_path_name.toCharArray(file_path_name_buf, file_path_name.length() + 1);
+    if (SD.exists(file_path_name_buf))
+    {
+      lcd_print(4, 0, "s+");
+      Serial.print( String("opening file: ") + String(file_path_name_buf) + String("\n") );
+      *f = SD.open(file_path_name_buf, FILE_READ);
+      if (f->available())
+      {
+        lcd_print(6, 0, "f+");
+        //Serial.print("1\n");
+      }
+      else
+      {
+        lcd_print(6, 0, "f-");
+        //Serial.print( "2\n" ); // costs 17 bytes?
+        // xxx  204 No Content 
+      }
+    }
+    else
+    {
+      lcd_print(4, 0, "s-");
+      // xxx  404 Not Found
+    }
+    free(file_path_name_buf); // super-important memory deallocation
     // send header
-    Serial.print("sending response header\n");
     server.println( get_response_header("text/html", f ) );
-    Serial.print("response header sent.\n");
 
     // send file
+    while (f->available())
+    {
+      server.write(f->read());
+    }
 
     // done sending response; discharge client
     if (client.connected())
     {
       client.stop(); 
-      Serial.print("stopping client\n");
+      ;
+      //      Serial.print("stp cli\n");
     }
     else
     {
-      Serial.print("client already stopped !!!\n"); 
+      ;
+      //      Serial.print("client already stopped !!!\n"); 
     }
   }// end if(client)
   else
@@ -295,6 +350,12 @@ void loop()
     client = server.available(); 
   }
 }
+
+
+
+
+
+
 
 
 
