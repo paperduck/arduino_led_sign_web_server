@@ -180,12 +180,12 @@ void loop()
             case 0:
               // request type (GET, POST, ...)
               request_type = token;
-              Serial.print("token 1:0 = " + token + "\n");
+              Serial.print("1:0 token = " + token + "\n");
               break; 
             case 1:
               // file requested
               file_path_name_args = token;
-              Serial.print("token 1:1 = " + token + "\n");
+              Serial.print("1:1 token = " + token + "\n");
               break; 
             case 2:
               // http version
@@ -220,7 +220,7 @@ void loop()
             {
             case 2:
               http_version_client = token;
-              Serial.print("token 1:2 = " + token + "\n");
+              Serial.print("1:2 token = " + token + "\n");
               break; 
             default:
               // 400 (Bad Request)
@@ -261,12 +261,15 @@ void loop()
         token += String(char(cur_byte));
       }
     }// end while
+    // send response
 
-    // EOF; start sending response
-    // Start by retrieving the requested file
+      // parse out arguments in file path
+    ;
 
-      // send header
-    Serial.print("EOF reached. sending response header\n");
+    // retrieve the requested file
+    ;
+    // send header
+    Serial.print("sending response header\n");
     server.println( get_response_header("text/html", f ) );
     Serial.print("response header sent.\n");
 
@@ -276,6 +279,11 @@ void loop()
     if (client.connected())
     {
       client.stop(); 
+      Serial.print("stopping client\n");
+    }
+    else
+    {
+      Serial.print("client already stopped !!!\n"); 
     }
   }// end if(client)
   else
@@ -287,6 +295,16 @@ void loop()
     client = server.available(); 
   }
 }
+
+
+
+
+
+
+
+
+
+
 
 
 
