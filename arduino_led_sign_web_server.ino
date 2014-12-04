@@ -69,8 +69,6 @@ String get_response_header(String response_header_type, File * f) // xxx   Make 
   String line_2 = String("Content-Type: ") + response_header_type + String("\r\n");
   String line_3 = String("Content-Length: ") + String(f->size()) + String("\r\n");
 
-  Serial.print( String(line_1) + String(line_2) + String(line_3) );
-
   return String(line_1) + String(line_2) + String(line_3);
 }
 
@@ -192,16 +190,10 @@ void loop()
             case 0:
               // request type (GET, POST, ...)
               request_type = token;
-              //              Serial.print("1:0 token = ");
-              //              Serial.print(token);
-              //              Serial.print("\n");
               break; 
             case 1:
               // file requested
               file_path_name = token;
-              //              Serial.print("1:1 token = ");
-              //              Serial.print(token);
-              //              Serial.print("\n");
               break; 
             case 2:
               // http version
@@ -223,7 +215,6 @@ void loop()
       }
       else if (char(cur_byte) == char('\r'))
       {
-        //        Serial.print("  \\r\n");
         // carriage return
         if (appending_token)
         {
@@ -236,23 +227,13 @@ void loop()
             {
             case 2:
               http_version_client = token;
-              //              Serial.print("1:2 token = ");
-              //              Serial.print(token);
-              //              Serial.print("\n");
               break; 
             default:
               // 400 (Bad Request)
-              //              Serial.print("1:");
-              //              Serial.print(cur_token_index);
-              //              Serial.print("\n");
               // xxx
               break; 
             }
           default:
-            //            Serial.print(cur_line_num);
-            //            Serial.print(":");
-            //            Serial.print(cur_token_index);
-            //            Serial.print("\n");
             break;
           }
         }
@@ -260,7 +241,6 @@ void loop()
       else if (char(cur_byte) == char('\n'))
       {
         // newline
-        //        Serial.print("  \\n\n");
         cur_line_num ++;
         cur_token_index = 0;
       }
@@ -283,33 +263,33 @@ void loop()
 
       // parse out arguments in file path
     index_of = file_path_name.indexOf("?", 0);
-    //    Serial.print("index_of = ");
-    //    Serial.print(index_of + String("\n"));
-    //    Serial.print(String("old filepath = ") + file_path_name + String("\n") );
     if (index_of > -1)
     {
       // extract arguments  xxx
       file_path_name = file_path_name.substring(0, index_of); 
-      //      Serial.print( String("new filepath = ") + file_path_name + String("\n") );
     }
 
     // retrieve the requested file
-    file_path_name_buf = (char*)malloc( sizeof(char) * (file_path_name.length() + 1 ));
-    file_path_name.toCharArray(file_path_name_buf, file_path_name.length() + 1);
+    //    file_path_name_buf = (char*)malloc( (sizeof(char) * file_path_name.length()) + 1 );
+    //    file_path_name_buf = (char*)malloc( 11 );
+    //    file_path_name.toCharArray(file_path_name_buf, (file_path_name.length() + 1));
+    //    file_path_name.toCharArray(file_path_name_buf, 11);
+    file_path_name_buf = "/index.htmx";
+    file_path_name_buf[10] = '\n';
+    Serial.print( file_path_name_buf );
     if (SD.exists(file_path_name_buf))
     {
       lcd_print(4, 0, "s+");
-      Serial.print( String("opening file: ") + String(file_path_name_buf) + String("\n") );
       *f = SD.open(file_path_name_buf, FILE_READ);
       if (f->available())
       {
         lcd_print(6, 0, "f+");
-        //Serial.print("1\n");
+        Serial.print( "1\n" ); // costs 17 bytes?
       }
       else
       {
         lcd_print(6, 0, "f-");
-        //Serial.print( "2\n" ); // costs 17 bytes?
+        Serial.print( "2\n" ); // costs 17 bytes?
         // xxx  204 No Content 
       }
     }
@@ -320,7 +300,7 @@ void loop()
     }
     free(file_path_name_buf); // super-important memory deallocation
     // send header
-    server.println( get_response_header("text/html", f ) );
+    // server.println( get_response_header("text/html", f ) );
 
     // send file
     while (f->available())
@@ -333,12 +313,10 @@ void loop()
     {
       client.stop(); 
       ;
-      //      Serial.print("stp cli\n");
     }
     else
     {
       ;
-      //      Serial.print("client already stopped !!!\n"); 
     }
   }// end if(client)
   else
@@ -350,6 +328,8 @@ void loop()
     client = server.available(); 
   }
 }
+
+
 
 
 
