@@ -25,7 +25,7 @@ Notes:
 #include <SPI.h>
 #include <Ethernet.h>
 #include <SD.h>
-#include <EEPROM.h>
+//#include <EEPROM.h>
 
 /****************************************************************/
 //Create LCD screen instance ***
@@ -66,6 +66,9 @@ char *                     file_path_name_buf; // char* for passing into SD.exis
 //String                     http_version_client = ""; // HTTP version specified by client
 boolean                    appending_token = true;
 long                       index_of; // stores result of String.indexOf()
+
+// debugging
+byte                       temp_byte;
 
 // EEPROM
 
@@ -278,9 +281,9 @@ void loop()
       }
     }// end while
 
-      // send response
+    // send response
 
-      // parse out arguments in file path
+    // parse out arguments in file path
     index_of = file_path_name.indexOf("?", 0);
     if (index_of > -1)
     {
@@ -306,7 +309,10 @@ void loop()
         // send file
         while (f.available())
         {
-          server.write(f.read());
+          temp_byte = f.read();
+          //server.write(f.read());
+          server.write(temp_byte);
+          Serial.print(char(temp_byte));
         }
         // done sending response; discharge client
         if (client.connected())
