@@ -49,10 +49,10 @@ File                       f; // file to read from SD card
 unsigned short int         status_code = 0;
 String                     serial_debug_string = "";
 unsigned long              time_of_last_serial_debug_print = millis();
-unsigned short int         d1 = 100;
-unsigned short int         d5 = 500;
-int                        memory_available = 0;
-int                        memory_available_min = 9999;
+unsigned short          d1 = 100;
+unsigned short          d5 = 500;
+short                      memory_available = 0;
+short                      memory_available_min = 9999;
 
 // Parsing, Flags, State ***
 byte                       cur_byte;
@@ -62,14 +62,14 @@ unsigned short int         cur_token_index = 0;  // 0-based. e.g. GET will have 
 String                     request_type = ""; // GET, POST
 String                     file_path_name = ""; // file requested + args
 char *                     file_path_name_buf; // char* for passing into SD.exists(), SD.open()
-//String                     file_path_name_trimmed = ""; // file requested + args
-//String                     http_version_client = ""; // HTTP version specified by client
+//String                   file_path_name_trimmed = ""; // file requested + args
+//String                   http_version_client = ""; // HTTP version specified by client
 boolean                    appending_token = true;
 long                       index_of; // stores result of String.indexOf()
 
 // File stuff
 String                     file_media_type; // a.k.a. MIME type, a.k.a. Content-type
-String                     default_media_type = "application/octet-stream";
+String                     default_media_type;
 
 // debugging
 byte                       temp_byte;
@@ -78,16 +78,32 @@ byte                       temp_byte;
 
 /****************************************************************/
 //boolean send_http_header(String response_header_type, unsigned int file_size)
-boolean send_http_header(unsigned int file_size, String file_media_type)
+boolean send_http_header(unsigned int file_size, String file_media_type, unsigned short status_code)
 {  
-  // 'response_header_type' should be a media type, e.g. "image/png", "text/html".
+  // 'file_media_type' should be a media type, e.g. "image/png", "text/html".
   // http://en.wikipedia.org/wiki/Internet_media_type#Type_image
 
-  server.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
-  server.print(file_media_type);
-  server.print( "\r\nContent-length: " );
-  server.print( String(file_size) );
-  server.print( "\r\n\r\n" );
+    server.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
+    server.print( file_media_type);
+    server.print( "\r\nContent-length: " );
+    server.print( String(file_size) );
+    server.print( "\r\n\r\n" );
+
+  // multiline uses same SRAM as inline concatenation
+  // Multi-line server.print doesn't seem to work with header
+
+  //server.print( "HTTP/1.1 200 OK\r\nContent-Type: " + String(  file_media_type ) + String( "\r\nContent-Length: " ) + String( file_size ) + String( "\r\n\r\n" ) );
+
+//  if (status_code == 204 || (status_code >= 100 && status_code < 200) )
+//  { 
+//    // MUST NOT send Content-Length header
+//    server.print( String("HTTP/1.1 200 OK\r\nContent-Type: ") + String(  file_media_type ) + String( "\r\n\r\n" ) );
+//  }
+//  else
+//  {
+//    server.print( String("HTTP/1.1 200 OK\r\nContent-Type: ") + String(  file_media_type ) + String("\r\nContent-Length: ") + String( file_size ) + String( "\r\n\r\n" ) );
+//    Serial.print( String("HTTP/1.1 200 OK\r\nContent-Type: ") + String(  file_media_type ) + String("\r\nContent-Length: ") + String( file_size ) + String( "\r\n\r\n" ) );
+//  }
 }
 
 /****************************************************************/
@@ -116,46 +132,6 @@ int availableMemory() {
 }
 
 /****************************************************************/
-void setup()
-{
-  Serial.begin(9600); 
-
-  // LCD screen
-  lcd.begin(16,2);
-
-  lcd_print(0, 0, ".");
-
-  // Ethernet
-  while ( ! Ethernet.begin(mac) )
-  {
-    lcd.clear();
-    lcd_print(0,0,"E !!");  
-    delay(d1);
-  }
-  server.begin(); // starts listening for incoming connections
-  lcd.clear();
-  lcd_print(0,0,"E  ok");     
-  delay(d5);
-  lcd.clear();
-  lcd_print(0,0, Ethernet.localIP()); 
-  delay(d5);
-
-  // SD card
-  //f = (File *)malloc(sizeof(File));
-  pinMode(10, OUTPUT);
-  while ( ! SD.begin(4))
-  {
-    lcd.clear();
-    lcd_print(0,0,"SD !!"); 
-    delay(d1);
-  }
-  lcd.clear();
-  lcd_print(0,0,"SD ok"); 
-  delay(d5);  
-  lcd.clear();
-}
-
-/****************************************************************/
 void refresh_memory_stats()
 {
   memory_available = availableMemory();
@@ -175,39 +151,255 @@ void refresh_memory_stats()
 //   image/gif
 //   image/jpg
 String get_file_media_type(String file_name)
-{return "text/html";
-//   long index_of = file_name.lastIndexOf(".");
-//   if (index_of == -1)
-//   {
-//     // no period found, use a default type
-//     return default_media_type;
-//   }
-//   else if (file_name.substring(index_of) == ".htm" || file_name.substring(index_of) == ".html")
-//   {
-//     return "text/html";
-//   }
-////   else if (file_name.substring(index_of) == ".jpg")
-////   {
-////     return "image/jpg";
-////   }
-////   else if (file_name.substring(index_of) == ".jpeg")
-////   {
-////     return "image/jpeg";
-////   }
-//   else if (file_name.substring(index_of) == ".png")
-//   {
-//     return "image/png";
-//   }
-////   else if (file_name.substring(index_of) == ".xml")
-////   {
-////     return "application/xml";
-////   }
-//   else
-//   {
-//     // default case
-//     return default_media_type; 
-//   }
+{
+  long index_of = file_name.lastIndexOf(".");
+  Serial.print( String("substring(index_of) = ") + String(file_name.substring(index_of)) + String("\n") );
+  if (index_of == -1)
+  {
+    // no period found, use a default type
+    return default_media_type;
+  }
+  else if (file_name.substring(index_of) == F(".htm") || file_name.substring(index_of) == F(".html"))
+  {
+    return F("text/html");
+  }
+  //   else if (file_name.substring(index_of) == ".jpg")
+  //   {
+  //     return "image/jpg";
+  //   }
+  //   else if (file_name.substring(index_of) == ".jpeg")
+  //   {
+  //     return "image/jpeg";
+  //   }
+  else if (file_name.substring(index_of) == F(".png"))
+  {
+    return F("image/png");
+  }
+  //   else if (file_name.substring(index_of) == ".xml")
+  //   {
+  //     return "application/xml";
+  //   }
+  else
+  {
+    // default case
+    return default_media_type; 
+  }
 }
+
+/****************************************************************/
+void process_client()
+{
+
+  lcd_print(15, 1, "c");
+  appending_token = true;
+  cur_line_num = 1;
+  cur_token_index = 0;
+  // read in all data from client, then process it.
+  while (client.available())
+  {
+    cur_byte = client.read();
+    Serial.write(cur_byte);
+
+    if (char(cur_byte) == char(' '))
+    {
+      // space
+      if (appending_token)
+      {
+        // current token ended
+        appending_token = false;
+        switch (cur_line_num)
+        {
+        case 1:
+          switch(cur_token_index)
+          {
+          case 0:
+            // request type (GET, POST, ...)
+            request_type = token;
+            break; 
+          case 1:
+            // file requested
+            file_path_name = token; 
+            break; 
+          case 2:
+            // http version
+            // This probably won't be reached because the last token should end with carriage return
+            //http_version_client = token;
+            break; 
+          default:
+            // 400 (Bad Request)
+            // xxx
+            break; 
+          }
+          break;
+        default:
+          // xxx   if GET, ignore rest of lines but need to parse arguments from file path
+          // xxx   if POST, need to get body
+          break;
+        }
+      }
+    }
+    else if (char(cur_byte) == char('\r'))
+    {
+      // carriage return
+      if (appending_token)
+      {
+        // current token ended
+        appending_token = false;
+        switch (cur_line_num)
+        {
+        case 1:
+          switch(cur_token_index)
+          {
+          case 2:
+            //http_version_client = token;
+            break; 
+          default:
+            // 400 (Bad Request)
+            // xxx
+            break; 
+          }
+        default:
+          break;
+        }
+      }
+    }
+    else if (char(cur_byte) == char('\n'))
+    {
+      // newline
+      cur_line_num ++;
+      cur_token_index = 0;
+    }
+    else
+    {
+      // non-whitespace 
+      if (!appending_token)
+      {
+        // starting a new token
+        token = "";
+        cur_token_index ++;
+        // check length of token, make sure it's not too long
+        // xxx
+      }
+      appending_token = true;
+      token += String(char(cur_byte));
+    }
+  }// end while
+
+    // send response
+
+    // parse out arguments in file path
+  index_of = file_path_name.indexOf("?", 0);
+  if (index_of > -1)
+  {
+    // extract arguments  xxx
+    file_path_name = file_path_name.substring(0, index_of); 
+  }
+
+  // retrieve the requested file
+  file_path_name_buf = (char*)malloc( (sizeof(char) * file_path_name.length()) + 1 );
+  file_path_name.toCharArray(file_path_name_buf, (file_path_name.length() + 1));
+  //file_path_name_buf[file_path_name.length()] = '\0';
+
+  if (SD.exists(file_path_name_buf)) // costs 119 bytes ?
+  {
+    lcd_print(4, 0, "+");  
+    f = SD.open(file_path_name_buf, FILE_READ);  // costs 31 bytes ?     
+    if (f.available())
+    {
+      lcd_print(6, 0, "+");
+
+      // xxx determine content-type based on filename
+      // send header
+      send_http_header(f.size(), get_file_media_type(file_path_name), 200);
+      // send file
+      while (f.available())
+      {
+        temp_byte = f.read();
+        //server.write(f.read());
+        server.write(temp_byte);
+      }
+      // done sending response; discharge client
+      if (client.connected())
+      {
+        client.stop(); 
+        ;
+      }
+    }
+    else
+    {
+      // xxx  204 No Content 
+      lcd_print(6, 0, "-");
+      send_http_header(3,  F("text/plain"), 204 );
+      server.print(F("204")); // no content
+
+      Serial.print(F("204\n"));
+
+      client.stop(); 
+    }
+    // close file 
+    f.close();
+  }
+  else
+  {
+    // xxx  404 Not Found
+    lcd_print(4, 0, "-");
+    send_http_header(3,  F("text/plain"), 404 );
+    server.print(F("404")); // not found
+
+    Serial.print(F("404\n"));
+
+    client.stop(); 
+  }
+
+  free(file_path_name_buf); // super-important memory deallocation
+  token = "";
+  request_type = "";
+  file_path_name = "";
+  // any others?
+}
+
+/****************************************************************/
+void setup()
+{
+  Serial.begin(9600); 
+
+  // LCD screen
+  lcd.begin(16,2);
+
+  lcd_print(0, 0, ".");
+
+  // Ethernet
+  while ( ! Ethernet.begin(mac) )
+  {
+    lcd.clear();
+    lcd_print(0,0, F("E!"));  
+    delay(d1);
+  }
+  server.begin(); // starts listening for incoming connections
+  lcd.clear();
+  lcd_print(0,0, F("Eok"));     
+  delay(d5);
+  lcd.clear();
+  lcd_print(0,0, Ethernet.localIP()); 
+  delay(d5);
+
+  // SD card
+  //f = (File *)malloc(sizeof(File));
+  pinMode(10, OUTPUT);
+  while ( ! SD.begin(4))
+  {
+    lcd.clear();
+    lcd_print(0,0, F("SD!")); 
+    delay(d1);
+  }
+  lcd.clear();
+  lcd_print(0,0, F("SDok")); 
+  delay(d5);  
+  lcd.clear();
+  
+  // 
+  default_media_type = F("application/octet-stream");
+} 
 
 /****************************************************************/
 void loop()
@@ -220,7 +412,7 @@ void loop()
   //    serial_debug_string = "";
   //  }
 
-  refresh_memory_stats();
+  //refresh_memory_stats();
 
   //  if (status_code < 10)
   //  {
@@ -233,176 +425,7 @@ void loop()
 
   if (client)
   {
-    lcd_print(15, 1, "c");
-    appending_token = true;
-    cur_line_num = 1;
-    cur_token_index = 0;
-    // read in all data from client, then process it.
-    while (client.available())
-    {
-      cur_byte = client.read();
-      Serial.write(cur_byte);
-
-      if (char(cur_byte) == char(' '))
-      {
-        // space
-        if (appending_token)
-        {
-          // current token ended
-          appending_token = false;
-          switch (cur_line_num)
-          {
-          case 1:
-            switch(cur_token_index)
-            {
-            case 0:
-              // request type (GET, POST, ...)
-              request_type = token;
-              break; 
-            case 1:
-              // file requested
-              file_path_name = token; 
-              break; 
-            case 2:
-              // http version
-              // This probably won't be reached because the last token should end with carriage return
-              //http_version_client = token;
-              break; 
-            default:
-              // 400 (Bad Request)
-              // xxx
-              break; 
-            }
-            break;
-          default:
-            // xxx   if GET, ignore rest of lines but need to parse arguments from file path
-            // xxx   if POST, need to get body
-            break;
-          }
-        }
-      }
-      else if (char(cur_byte) == char('\r'))
-      {
-        // carriage return
-        if (appending_token)
-        {
-          // current token ended
-          appending_token = false;
-          switch (cur_line_num)
-          {
-          case 1:
-            switch(cur_token_index)
-            {
-            case 2:
-              //http_version_client = token;
-              break; 
-            default:
-              // 400 (Bad Request)
-              // xxx
-              break; 
-            }
-          default:
-            break;
-          }
-        }
-      }
-      else if (char(cur_byte) == char('\n'))
-      {
-        // newline
-        cur_line_num ++;
-        cur_token_index = 0;
-      }
-      else
-      {
-        // non-whitespace 
-        if (!appending_token)
-        {
-          // starting a new token
-          token = "";
-          cur_token_index ++;
-          // check length of token, make sure it's not too long
-          // xxx
-        }
-        appending_token = true;
-        token += String(char(cur_byte));
-      }
-    }// end while
-
-    // send response
-
-    // parse out arguments in file path
-    index_of = file_path_name.indexOf("?", 0);
-    if (index_of > -1)
-    {
-      // extract arguments  xxx
-      file_path_name = file_path_name.substring(0, index_of); 
-    }
-
-    // retrieve the requested file
-    file_path_name_buf = (char*)malloc( (sizeof(char) * file_path_name.length()) + 1 );
-    file_path_name.toCharArray(file_path_name_buf, (file_path_name.length() + 1));
-    //file_path_name_buf[file_path_name.length()] = '\0';
-
-    if (SD.exists(file_path_name_buf)) // costs 119 bytes ?
-    {
-      lcd_print(4, 0, "s+");  
-      f = SD.open(file_path_name_buf, FILE_READ);  // costs 31 bytes ?     
-      if (f.available())
-      {
-        lcd_print(6, 0, "f+");
-        // xxx determine content-type based on filename
-        // send header
-        send_http_header(f.size(), get_file_media_type(file_path_name) );
-        // send file
-        while (f.available())
-        {
-          temp_byte = f.read();
-          //server.write(f.read());
-          server.write(temp_byte);
-        }
-        // done sending response; discharge client
-        if (client.connected())
-        {
-          client.stop(); 
-          ;
-        }
-      }
-      else
-      {
-        // xxx  204 No Content 
-        lcd_print(6, 0, "f-");
-        send_http_header(14,  get_file_media_type(file_path_name) );
-        server.print("204 no content");
-        
-        Serial.print("\n204");
-        Serial.print(file_path_name_buf);
-        Serial.print("\n");
-        
-        client.stop(); 
-      }
-      // close file 
-      f.close();
-    }
-    else
-    {
-      // xxx  404 Not Found
-      lcd_print(4, 0, "s-");
-      send_http_header(21,  get_file_media_type(file_path_name) );
-      server.print("404 not found");
-      
-      Serial.print("\n404");
-      Serial.print(file_path_name_buf);
-      Serial.print("\n");
-        
-      client.stop(); 
-    }
-
-    free(file_path_name_buf); // super-important memory deallocation
-    token = "";
-    request_type = "";
-    file_path_name = "";
-    // any others?
-
+    process_client();
   }// end if(client)
   else
   {
@@ -413,6 +436,9 @@ void loop()
     client = server.available(); 
   }
 }
+
+
+
 
 
 
