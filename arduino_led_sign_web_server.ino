@@ -148,12 +148,12 @@ void refresh_memory_stats()
 /****************************************************************/
 // Returns file media type, e.g.
 //   text/html
-//   image/gif
+//   image/gif 
 //   image/jpg
 String get_file_media_type(String file_name)
 {
   long index_of = file_name.lastIndexOf(".");
-  Serial.print( String("substring(index_of) = ") + String(file_name.substring(index_of)) + String("\n") );
+  Serial.print( String("substring(index_of) = ") + String(file_name.substring(index_of)) + String(".\n") );
   if (index_of == -1)
   {
     // no period found, use a default type
