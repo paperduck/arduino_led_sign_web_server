@@ -67,6 +67,10 @@ char *                     file_path_name_buf; // char* for passing into SD.exis
 boolean                    appending_token = true;
 long                       index_of; // stores result of String.indexOf()
 
+// File stuff
+String                     file_media_type; // a.k.a. MIME type, a.k.a. Content-type
+String                     default_media_type = "application/octet-stream";
+
 // debugging
 byte                       temp_byte;
 
@@ -74,12 +78,14 @@ byte                       temp_byte;
 
 /****************************************************************/
 //boolean send_http_header(String response_header_type, unsigned int file_size)
-boolean send_http_header(unsigned int file_size)
+boolean send_http_header(unsigned int file_size, String file_media_type)
 {  
   // 'response_header_type' should be a media type, e.g. "image/png", "text/html".
   // http://en.wikipedia.org/wiki/Internet_media_type#Type_image
 
-    server.print( "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-length: " );
+  server.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
+  server.print(file_media_type);
+  server.print( "\r\nContent-length: " );
   server.print( String(file_size) );
   server.print( "\r\n\r\n" );
 }
@@ -164,6 +170,46 @@ void refresh_memory_stats()
 }
 
 /****************************************************************/
+// Returns file media type, e.g.
+//   text/html
+//   image/gif
+//   image/jpg
+String get_file_media_type(String file_name)
+{return "text/html";
+//   long index_of = file_name.lastIndexOf(".");
+//   if (index_of == -1)
+//   {
+//     // no period found, use a default type
+//     return default_media_type;
+//   }
+//   else if (file_name.substring(index_of) == ".htm" || file_name.substring(index_of) == ".html")
+//   {
+//     return "text/html";
+//   }
+////   else if (file_name.substring(index_of) == ".jpg")
+////   {
+////     return "image/jpg";
+////   }
+////   else if (file_name.substring(index_of) == ".jpeg")
+////   {
+////     return "image/jpeg";
+////   }
+//   else if (file_name.substring(index_of) == ".png")
+//   {
+//     return "image/png";
+//   }
+////   else if (file_name.substring(index_of) == ".xml")
+////   {
+////     return "application/xml";
+////   }
+//   else
+//   {
+//     // default case
+//     return default_media_type; 
+//   }
+}
+
+/****************************************************************/
 void loop()
 {
   //  if (millis() - time_of_last_serial_debug_print > d1)
@@ -195,6 +241,7 @@ void loop()
     while (client.available())
     {
       cur_byte = client.read();
+      Serial.write(cur_byte);
 
       if (char(cur_byte) == char(' '))
       {
@@ -305,14 +352,13 @@ void loop()
         lcd_print(6, 0, "f+");
         // xxx determine content-type based on filename
         // send header
-        send_http_header(f.size());
+        send_http_header(f.size(), get_file_media_type(file_path_name) );
         // send file
         while (f.available())
         {
           temp_byte = f.read();
           //server.write(f.read());
           server.write(temp_byte);
-          Serial.print(char(temp_byte));
         }
         // done sending response; discharge client
         if (client.connected())
@@ -325,8 +371,13 @@ void loop()
       {
         // xxx  204 No Content 
         lcd_print(6, 0, "f-");
-        send_http_header(14);
+        send_http_header(14,  get_file_media_type(file_path_name) );
         server.print("204 no content");
+        
+        Serial.print("\n204");
+        Serial.print(file_path_name_buf);
+        Serial.print("\n");
+        
         client.stop(); 
       }
       // close file 
@@ -336,8 +387,13 @@ void loop()
     {
       // xxx  404 Not Found
       lcd_print(4, 0, "s-");
-      send_http_header(13);
+      send_http_header(21,  get_file_media_type(file_path_name) );
       server.print("404 not found");
+      
+      Serial.print("\n404");
+      Serial.print(file_path_name_buf);
+      Serial.print("\n");
+        
       client.stop(); 
     }
 
