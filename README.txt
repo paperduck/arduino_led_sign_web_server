@@ -1,5 +1,23 @@
 arduino_led_sign_web_server
 ==================
+
+---------------
+BRIEF SUMMARY
+---------------
 Simple web server for Arduino Uno. This particular server is custom-built to communicate via RS232 (serial) with an LED sign. This enabled the LED sign to be programmed remotely. 
 
-Still in development as of 2014/12/04.
+---------------
+CREATED:
+---------------
+2014-11-??
+
+
+---------------
+STATUS
+---------------
+In-progress
+
+
+---------------
+LONG DESCRIPTION
+---------------
