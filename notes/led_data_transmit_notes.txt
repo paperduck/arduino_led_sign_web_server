@@ -8,6 +8,8 @@ FF 01 30 31 EF B0 EF A2
 [43 65 6C 6C 6F]
 FF FF 00   
 
+00 FF FF 00 0B 01 FF 01 30 31 EF B0 EF A2 [43 65 6C 6C 6F] FF FF 00   
+
 ---
 
 pc(yellow usb) -> ard -> sign(serial to rs11)

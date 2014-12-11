@@ -34,8 +34,8 @@ LiquidCrystal lcd(A5, A4, A3, A2, A1, A0); // (rs, enable, d4, d5, d6, d7)
 // Ethernet ***
 byte mac[] = {
   0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
-byte ip[] = {
-  10, 10, 151, 121};
+//byte ip[] = {
+//  10, 10, 151, 121};
 EthernetServer server = EthernetServer(80);
 EthernetClient client = EthernetClient();
 
