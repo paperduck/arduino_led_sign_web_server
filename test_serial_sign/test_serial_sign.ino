@@ -85,11 +85,11 @@ byte    sign_packet_7[26] = {
 };
 
 byte   sign_packet_8[21] = {
- 0x00, 0xff, 0xff, 0x00, 0x0b, 0x01, 0xff, 0x01, 0x30, 0x31, 0xef, 0xb0, 0xef, 0xa2, 0x41, 0x41,
- 0x41, 0x41, 0xff, 0xff, 0x00
+  0x00, 0xff, 0xff, 0x00, 0x0b, 0x01, 0xff, 0x01, 0x30, 0x31, 0xef, 0xb0, 0xef, 0xa2, 0x41, 0x41,
+  0x41, 0x41, 0xff, 0xff, 0x00
 };
 
-byte     sign_packet_buffer[200];
+byte     sign_packet_buffer[400];
 
 unsigned long     time_since_last_rec_byte = 0;
 unsigned long     d = 5000;
@@ -116,54 +116,44 @@ void setup()
 /****************************************************************/
 void loop()
 {    
-  //  Serial.write(sign_packet_whole_2, 148);
-  //  s.write(sign_packet_whole_2, 148);
-  //  delay(d);
-
-  //  if (temp_bool)
+  //  if (millis() - time_of_last_programming > d)
   //  {
-  //    Serial.write("\n\nmy packet:\n\n");
-  //    Serial.write(sign_packet_whole_2, 148);
-  //    temp_bool = false;
+  //     time_of_last_programming = millis();
+  //    
+  //     s.write( sign_packet_8, 21 );
   //  }
 
-//  if (millis() - time_of_last_programming > d)
-//  {
-//     time_of_last_programming = millis();
-//    
-//     s.write( sign_packet_8, 21 );
-//  }
-
-
-  // capture bytes from PC
-  while (Serial.available() > 0)
+  if (s.available() > 0)
   {
-    b = Serial.read();    
-    time_since_last_rec_byte = millis();
-    sign_packet_buffer[num_bytes_sent] = b;    
+    b = s.read();    
+
     num_bytes_sent++;
     lcd.setCursor(0, 1);
-    lcd.print(String(num_bytes_sent) + String(" in buf       ") );
-
-    // reset
-    lcd.setCursor(9, 1);
-    lcd.print( String("   ") );
-    buf_ready = true;
+    lcd.print(String(num_bytes_sent) + String(" sent   ") );
   }
 
-  // captures bytes from sign
-  if(s.available() > 0)
+  if(Serial.available() > 0)
   { 
     //    if (temp_bool2)
     //    {
     //      Serial.write("\n Received data from sign! \n");
     //      temp_bool2 = false;
     //    }
-    b = s.read();    
+    
+    b = Serial.read();    
     //Serial.print( String(" ") + String( b, HEX ) );  
+
+    time_since_last_rec_byte = millis();
+    sign_packet_buffer[num_bytes_rec] = b; 
+    lcd.setCursor(0, 0);  
+//    lcd.setCursor(9, 0);
+//    lcd.print( String("   ") );
+    buf_ready = true;
+
     num_bytes_rec++;
-    lcd.setCursor(0, 0);
-    lcd.print(String(num_bytes_rec) + String(" rec   ") );
+    lcd.print(String(num_bytes_rec) + String(" in buf       ") );
+    //lcd.setCursor(0, 0);
+    //lcd.print(String(num_bytes_rec) + String(" rec   ") );
   }
 
   // forward buffer to sign
@@ -171,14 +161,15 @@ void loop()
   {
     if (buf_ready)
     {
-      sign_packet_buffer[num_bytes_sent] = '\0';  
-      lcd.setCursor(11, 1);
-      lcd.print( String( s.write( sign_packet_buffer, num_bytes_sent ) ) ); 
+      sign_packet_buffer[num_bytes_rec] = '\0';  
+      lcd.setCursor(11, 0);
+      lcd.print( String( s.write( sign_packet_buffer, num_bytes_rec ) ) ); 
       buf_ready = false;    
-      num_bytes_sent = 0;
+      num_bytes_rec = 0;
     }
   }
 }
+
 
 
 
