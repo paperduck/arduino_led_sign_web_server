@@ -131,66 +131,66 @@ void setup()
 /****************************************************************/
 void loop()
 {    
-  //  if (millis() - time_of_last_programming > 5000)
-  //  {
-  //    time_of_last_programming = millis();    
-  //    s.write( sign_packet_8, 22 );
-  //  }
-
-  if (s.available() > 0)
+  if (millis() - time_of_last_programming > 5000)
   {
-    b = s.read();    
-
-    num_bytes_sent++;
-    lcd.setCursor(0, 1);
-    lcd.print(String(num_bytes_sent) + String(" sent   ") );
+    time_of_last_programming = millis();    
+    s.write( sign_packet_8, 22 );
   }
 
-  if(Serial.available() > 0)
-  { 
-    b = Serial.read();    
-    //Serial.print( String(" ") + String( b, HEX ) ); 
-    // get current time
-    time_since_last_rec_byte = millis();
-    // write byte to buffer
-    sign_packet_buffer[num_bytes_rec] = b; 
-    // buffer has content
-    buf_ready = true;
-    // increment byte counter
-    num_bytes_rec++;
-    // debugging on lcd
-    lcd.setCursor(0, 0);  
-    lcd.print(String(num_bytes_rec) + String(" in buf       ") );
-    //lcd.setCursor(0, 0);
-    //lcd.print(String(num_bytes_rec) + String(" rec   ") );
-  }
-
-  // forward buffer to sign
-  if (millis() - time_since_last_rec_byte > 1000)
-  {
-    if (buf_ready)
-    { 
-      lcd.setCursor(11, 0);
-      //lcd.print( String( s.write( sign_packet_buffer, num_bytes_rec ) ) ); 
-      s.write( sign_packet_buffer, num_bytes_rec );
-
-//      lcd.setCursor(0,0);
-//      for (int a = 0; a < 16; a++)
-//      {
-//        lcd.print( String(char(sign_packet_buffer[a])) );
-//        s.write( sign_packet_buffer[a]); 
-//      }
-//      lcd.setCursor(0, 1);
-//      for (int b = 16; b < num_bytes_rec; b++)
-//      {
-//        lcd.print( String(char(sign_packet_buffer[b])) );
-//        s.write( sign_packet_buffer[b] ); 
-//      }
-
-      buf_ready = false;    
-      num_bytes_rec = 0;      
-    }
-  }
+//  if (s.available() > 0)
+//  {
+//    b = s.read();    
+//
+//    num_bytes_sent++;
+//    lcd.setCursor(0, 1);
+//    lcd.print(String(num_bytes_sent) + String(" sent   ") );
+//  }
+//
+//  if(Serial.available() > 0)
+//  { 
+//    b = Serial.read();    
+//    //Serial.print( String(" ") + String( b, HEX ) ); 
+//    // get current time
+//    time_since_last_rec_byte = millis();
+//    // write byte to buffer
+//    sign_packet_buffer[num_bytes_rec] = b; 
+//    // buffer has content
+//    buf_ready = true;
+//    // increment byte counter
+//    num_bytes_rec++;
+//    // debugging on lcd
+//    lcd.setCursor(0, 0);  
+//    lcd.print(String(num_bytes_rec) + String(" in buf       ") );
+//    //lcd.setCursor(0, 0);
+//    //lcd.print(String(num_bytes_rec) + String(" rec   ") );
+//  }
+//
+//  // forward buffer to sign
+//  if (millis() - time_since_last_rec_byte > 1000)
+//  {
+//    if (buf_ready)
+//    { 
+//      lcd.setCursor(11, 0);
+//      //lcd.print( String( s.write( sign_packet_buffer, num_bytes_rec ) ) ); 
+//      s.write( sign_packet_buffer, num_bytes_rec );
+//
+////      lcd.setCursor(0,0);
+////      for (int a = 0; a < 16; a++)
+////      {
+////        lcd.print( String(char(sign_packet_buffer[a])) );
+////        s.write( sign_packet_buffer[a]); 
+////      }
+////      lcd.setCursor(0, 1);
+////      for (int b = 16; b < num_bytes_rec; b++)
+////      {
+////        lcd.print( String(char(sign_packet_buffer[b])) );
+////        s.write( sign_packet_buffer[b] ); 
+////      }
+//
+//      buf_ready = false;    
+//      num_bytes_rec = 0;      
+//    }
+//  }
 
 }
 

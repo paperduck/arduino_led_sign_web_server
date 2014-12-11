@@ -1,0 +1,11 @@
+
+Ethernet
+--------
+4	SS		select SD card
+
+10	SS		select w5100 (ethernet)
+11	MOSI
+12	MISO
+13	SCK
+
+
