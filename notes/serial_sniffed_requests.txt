@@ -1,0 +1,128 @@
+000001: PnP Event (DOWN), 08.12.2014 13:24:34.757 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+The device has just been connected to the system.
+
+000002: Create Request (DOWN), 08.12.2014 13:25:05.374 +30.617 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+Process 0x22c4 (Moving-sign V3.91.exe) attempted to open the device
+
+000003: Create Request (UP), 08.12.2014 13:25:05.398 +0.024 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+Process 0x22c4 (Moving-sign V3.91.exe) create request status: 0x00000000
+
+000004: Close Request (DOWN), 08.12.2014 13:25:05.428 +0.030 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+Buffer size: 0x0 bytes
+
+000006: Create Request (DOWN), 08.12.2014 13:25:09.790 +4.318 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+Process 0x22c4 (Moving-sign V3.91.exe) attempted to open the device
+
+000007: Create Request (UP), 08.12.2014 13:25:09.813 +0.023 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+Process 0x22c4 (Moving-sign V3.91.exe) create request status: 0x00000000
+
+000008: I/O Request (DOWN), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_SET_TIMEOUTS: Set timeouts
+  ReadIntervalTimeout=1000
+  ReadTotalTimeoutMultiplier=1000
+  ReadTotalTimeoutConstant=1000
+  WriteTotalTimeoutMultiplier=1000
+  WriteTotalTimeoutConstant=1000
+
+000010: I/O Request (DOWN), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_SET_WAIT_MASK: Set current event mask
+  WaitMask=RXCHAR: Any Character received, TXEMPTY: Transmitt Queue Empty, CTS: CTS changed state
+
+000013: I/O Request (UP), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+
+IOCTL_SERIAL_GET_BAUD_RATE: Retrieve Baud Rate
+  Baud Rate=2400
+
+000015: I/O Request (UP), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_GET_LINE_CONTROL: Retrieve line control
+  WordLength=8
+  StopBits=1 stop bit
+  Parity=No parity
+
+000017: I/O Request (UP), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_GET_CHARS: Retrieve special characters
+  EofChar=0x0
+  ErrorChar=0x0
+  BreakChar=0x0
+  EventChar=0x0
+  XonChar=0x0
+  XoffChar=0x0
+
+000019: I/O Request (UP), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_GET_HANDFLOW: Retrieve handshake information
+  ControlHandShake=1
+  FlowReplace=64
+  XonLimit=2048
+  XoffLimit=512
+
+000021: I/O Request (UP), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_GET_BAUD_RATE: Retrieve Baud Rate
+  Baud Rate=2400
+
+000023: I/O Request (UP), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_GET_LINE_CONTROL: Retrieve line control
+  WordLength=8
+  StopBits=1 stop bit
+  Parity=No parity
+
+000025: I/O Request (UP), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_GET_CHARS: Retrieve special characters
+  EofChar=0x0
+  ErrorChar=0x0
+  BreakChar=0x0
+  EventChar=0x0
+  XonChar=0x0
+  XoffChar=0x0
+
+000027: I/O Request (UP), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_GET_HANDFLOW: Retrieve handshake information
+  ControlHandShake=1
+  FlowReplace=64
+  XonLimit=2048
+  XoffLimit=512
+
+000028: I/O Request (DOWN), 08.12.2014 13:25:09.813 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_SET_BAUD_RATE: Set baud rate
+  Baud Rate=2400
+
+000030: I/O Request (DOWN), 08.12.2014 13:25:09.818 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_SET_RTS: Set RTS
+
+000032: I/O Request (DOWN), 08.12.2014 13:25:09.818 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_SET_DTR: Set DTR
+
+000034: I/O Request (DOWN), 08.12.2014 13:25:09.818 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_SET_LINE_CONTROL: Set line control
+  WordLength=8
+  StopBits=1 stop bit
+  Parity=No parity
+
+000036: I/O Request (DOWN), 08.12.2014 13:25:09.818 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_SET_CHARS: Set special characters
+  EofChar=0x0
+  ErrorChar=0x0
+  BreakChar=0x0
+  EventChar=0x0
+  XonChar=0x0
+  XoffChar=0x0
+000038: I/O Request (DOWN), 08.12.2014 13:25:09.818 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_SET_HANDFLOW: Set handshake information
+  ControlHandShake=1
+  FlowReplace=64
+  XonLimit=2048
+  XoffLimit=512
+
+000040: I/O Request (DOWN), 08.12.2014 13:25:09.818 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_PURGE: Purge requests
+  Purge mask=TXABORT: Read requests, RXABORT: Receive buffer, TXCLEAR: Write requests, RXCLEAR: Write buffer
+
+000042: I/O Request (DOWN), 08.12.2014 13:25:09.818 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+IOCTL_SERIAL_PURGE: Purge requests
+  Purge mask=TXABORT: Read requests, TXCLEAR: Write requests
+
+000044: Write Request (DOWN), 08.12.2014 13:25:09.818 +0.0 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+Buffer size: 0x92 bytes
+
+000046: Close Request (DOWN), 08.12.2014 13:25:09.925 +0.030 (1. Device: Prolific USB-to-Serial Comm Port (COM8))
+Buffer size: 0x0 bytes
+
