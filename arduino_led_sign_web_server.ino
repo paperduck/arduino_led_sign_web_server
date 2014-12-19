@@ -10,6 +10,7 @@ LED Adapter
  - xxx consider replacing all String class uses with char arrays/pointers
  - xxx short ints
  - xxx triple-check memory allocation + deallocation
+ - xxx retry upon 404, 204 a certain number of times
  */
 
 /*
@@ -40,7 +41,7 @@ EthernetServer server = EthernetServer(80);
 EthernetClient client = EthernetClient();
 
 // SD card ***
-File                       f; // file to read from SD card
+//File                       f; // file to read from SD card
 
 // diagnostic ***
 //unsigned short int         num_requests = 0;   // counter for requests
@@ -61,7 +62,7 @@ unsigned long              cur_line_num = 1;   // 1-based. 0 means no lines yet.
 unsigned short int         cur_token_index = 0;  // 0-based. e.g. GET will have token index 0. Filename 1. HTTP version 2.
 String                     request_type = ""; // GET, POST
 String                     file_path_name = ""; // file requested + args
-char *                     file_path_name_buf; // char* for passing into SD.exists(), SD.open()
+//char *                     file_path_name_buf; // char* for passing into SD.exists(), SD.open()
 //String                   file_path_name_trimmed = ""; // file requested + args
 //String                   http_version_client = ""; // HTTP version specified by client
 boolean                    appending_token = true;
@@ -77,40 +78,69 @@ byte                       temp_byte;
 // EEPROM
 
 /****************************************************************/
-//boolean send_http_header(String response_header_type, unsigned int file_size)
+void setup()
+{
+  Serial.begin(9600); 
+
+  // LCD screen
+  lcd.begin(16,2);
+
+  lcd_print(0, 0, ".");
+
+  // Ethernet
+  while ( ! Ethernet.begin(mac) )
+  {
+    lcd.clear();
+    lcd_print(0,0, F("E!"));  
+    delay(d1);
+  }
+  server.begin(); // starts listening for incoming connections
+  lcd.clear();
+  lcd_print(0,0, F("Eok"));     
+  delay(d5);
+  lcd.clear();
+  lcd_print(0,0, Ethernet.localIP()); 
+  delay(d5);
+
+  // SD card
+  //f = (File *)malloc(sizeof(File));
+  pinMode(10, OUTPUT);
+  while ( ! SD.begin(4))
+  {
+    lcd.clear();
+    lcd_print(0,0, F("SD!")); 
+    delay(d1);
+  }
+  lcd.clear();
+  lcd_print(0,0, F("SDok")); 
+  delay(d5);  
+  lcd.clear();
+
+  // 
+  default_media_type = F("application/octet-stream");
+} 
+
+/****************************************************************/
+// multiline uses same SRAM as inline concatenation
+// 'file_media_type' should be a media type, e.g. "image/png", "text/html".
+//   http://en.wikipedia.org/wiki/Internet_media_type#Type_image
+//
 boolean send_http_header(unsigned int file_size, String file_media_type, unsigned short status_code)
 {  
-  // 'file_media_type' should be a media type, e.g. "image/png", "text/html".
-  // http://en.wikipedia.org/wiki/Internet_media_type#Type_image
+  server.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
+  server.print( file_media_type);
+  server.print( "\r\nContent-length: " );
+  server.print( String(file_size) );
+  server.print( "\r\n\r\n" );
 
-    server.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
-    server.print( file_media_type);
-    server.print( "\r\nContent-length: " );
-    server.print( String(file_size) );
-    server.print( "\r\n\r\n" );
-    
-    // debugging
-    Serial.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
-    Serial.print( file_media_type);
-    Serial.print( "\r\nContent-length: " );
-    Serial.print( String(file_size) );
-    Serial.print( "\r\n\r\n" );
-
-  // multiline uses same SRAM as inline concatenation
-  // Multi-line server.print doesn't seem to work with header
-
-  //server.print( "HTTP/1.1 200 OK\r\nContent-Type: " + String(  file_media_type ) + String( "\r\nContent-Length: " ) + String( file_size ) + String( "\r\n\r\n" ) );
-
-//  if (status_code == 204 || (status_code >= 100 && status_code < 200) )
-//  { 
-//    // MUST NOT send Content-Length header
-//    server.print( String("HTTP/1.1 200 OK\r\nContent-Type: ") + String(  file_media_type ) + String( "\r\n\r\n" ) );
-//  }
-//  else
-//  {
-//    server.print( String("HTTP/1.1 200 OK\r\nContent-Type: ") + String(  file_media_type ) + String("\r\nContent-Length: ") + String( file_size ) + String( "\r\n\r\n" ) );
-//    Serial.print( String("HTTP/1.1 200 OK\r\nContent-Type: ") + String(  file_media_type ) + String("\r\nContent-Length: ") + String( file_size ) + String( "\r\n\r\n" ) );
-//  }
+  // debugging
+  //Serial.println(String(status_code) + String(file_path_name_buf));
+  //
+  //Serial.print( "-----\nHTTP/1.1 200 OK\r\nContent-Type: " );
+  //Serial.print( file_media_type);
+  //  Serial.print( "\r\nContent-length: " );
+  //  Serial.print( String(file_size) );
+ //Serial.print( "\r\n\r\n~~~~~\n" );
 }
 
 /****************************************************************/
@@ -160,7 +190,7 @@ void refresh_memory_stats()
 String get_file_media_type(String file_name)
 {
   long index_of = file_name.lastIndexOf(".");
-  Serial.print( String("substring(index_of) = ") + String(file_name.substring(index_of)) + String(".\n") );
+  //Serial.print( String("substring(index_of) = ") + String(file_name.substring(index_of)) + String(".\n") );
   if (index_of == -1)
   {
     // no period found, use a default type
@@ -196,6 +226,7 @@ String get_file_media_type(String file_name)
 /****************************************************************/
 void process_client()
 {
+  Serial.println(F("process_client()\n"));
 
   lcd_print(15, 1, "c");
   appending_token = true;
@@ -226,6 +257,10 @@ void process_client()
           case 1:
             // file requested
             file_path_name = token; 
+            if (file_path_name == "/" || file_path_name == "\\")
+            {
+              file_path_name = "index.htm";
+            }
             break; 
           case 2:
             // http version
@@ -292,8 +327,6 @@ void process_client()
     }
   }// end while
 
-    // send response
-
     // parse out arguments in file path
   index_of = file_path_name.indexOf("?", 0);
   if (index_of > -1)
@@ -303,14 +336,27 @@ void process_client()
   }
 
   // retrieve the requested file
-  file_path_name_buf = (char*)malloc( (sizeof(char) * file_path_name.length()) + 1 );
-  file_path_name.toCharArray(file_path_name_buf, (file_path_name.length() + 1));
-  //file_path_name_buf[file_path_name.length()] = '\0';
+  char * file_path_name_buf = (char*)malloc( (sizeof(char) * file_path_name.length()) + 1 );
+  //file_path_name.toCharArray(file_path_name_buf, (file_path_name.length() + 1));
+
+  file_path_name_buf[0] = 'i';
+  file_path_name_buf[1] = 'n';
+  file_path_name_buf[2] = 'd';
+  file_path_name_buf[3] = 'e';
+  file_path_name_buf[4] = 'x';
+  file_path_name_buf[5] = '.';
+  file_path_name_buf[6] = 'h';
+  file_path_name_buf[7] = 't';
+  file_path_name_buf[8] = 'm';
+
+  file_path_name_buf[file_path_name.length()] = '\0';
+  
+  Serial.println(String("checking if ") + String( file_path_name_buf ) + String("exists") );
 
   if (SD.exists(file_path_name_buf)) // costs 119 bytes ?
   {
     lcd_print(4, 0, "+");  
-    f = SD.open(file_path_name_buf, FILE_READ);  // costs 31 bytes ?     
+    File f = SD.open(file_path_name_buf, FILE_READ);  // costs 31 bytes ?     
     if (f.available())
     {
       lcd_print(6, 0, "+");
@@ -322,17 +368,8 @@ void process_client()
       while (f.available())
       {
         temp_byte = f.read();
-        //server.write(f.read());
-        
-        Serial.write(temp_byte); // debugging
-        
         server.write(temp_byte);
-      }
-      // done sending response; discharge client
-      if (client.connected())
-      {
-        client.stop(); 
-        ;
+        //Serial.write(temp_byte); // debugging        
       }
     }
     else
@@ -342,9 +379,7 @@ void process_client()
       send_http_header(3,  F("text/plain"), 204 );
       server.print(F("204")); // no content
 
-      Serial.print(F("204\n"));
-
-      client.stop(); 
+      Serial.print(String("204: ") + file_path_name); // debugging
     }
     // close file 
     f.close();
@@ -356,60 +391,19 @@ void process_client()
     send_http_header(3,  F("text/plain"), 404 );
     server.print(F("404")); // not found
 
-    Serial.print(F("404\n"));
-
+    Serial.print(String("404: ") + String(file_path_name));
+  }
+  //   disconnect client, if there is no undread data from client.
+  if (client.connected())
+  {
     client.stop(); 
   }
-
   free(file_path_name_buf); // super-important memory deallocation
   token = "";
   request_type = "";
   file_path_name = "";
-  // any others?
+  // xxx any others?
 }
-
-/****************************************************************/
-void setup()
-{
-  Serial.begin(9600); 
-
-  // LCD screen
-  lcd.begin(16,2);
-
-  lcd_print(0, 0, ".");
-
-  // Ethernet
-  while ( ! Ethernet.begin(mac) )
-  {
-    lcd.clear();
-    lcd_print(0,0, F("E!"));  
-    delay(d1);
-  }
-  server.begin(); // starts listening for incoming connections
-  lcd.clear();
-  lcd_print(0,0, F("Eok"));     
-  delay(d5);
-  lcd.clear();
-  lcd_print(0,0, Ethernet.localIP()); 
-  delay(d5);
-
-  // SD card
-  //f = (File *)malloc(sizeof(File));
-  pinMode(10, OUTPUT);
-  while ( ! SD.begin(4))
-  {
-    lcd.clear();
-    lcd_print(0,0, F("SD!")); 
-    delay(d1);
-  }
-  lcd.clear();
-  lcd_print(0,0, F("SDok")); 
-  delay(d5);  
-  lcd.clear();
-  
-  // 
-  default_media_type = F("application/octet-stream");
-} 
 
 /****************************************************************/
 void loop()
@@ -446,6 +440,15 @@ void loop()
     client = server.available(); 
   }
 }
+
+
+
+
+
+
+
+
+
 
 
 
