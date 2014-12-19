@@ -88,6 +88,13 @@ boolean send_http_header(unsigned int file_size, String file_media_type, unsigne
     server.print( "\r\nContent-length: " );
     server.print( String(file_size) );
     server.print( "\r\n\r\n" );
+    
+    // debugging
+    Serial.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
+    Serial.print( file_media_type);
+    Serial.print( "\r\nContent-length: " );
+    Serial.print( String(file_size) );
+    Serial.print( "\r\n\r\n" );
 
   // multiline uses same SRAM as inline concatenation
   // Multi-line server.print doesn't seem to work with header
@@ -316,6 +323,9 @@ void process_client()
       {
         temp_byte = f.read();
         //server.write(f.read());
+        
+        Serial.write(temp_byte); // debugging
+        
         server.write(temp_byte);
       }
       // done sending response; discharge client
