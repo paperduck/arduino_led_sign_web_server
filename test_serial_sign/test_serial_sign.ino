@@ -87,10 +87,12 @@ void loop()
 
   //--------------------------------------------------------------
   // CHUNKED BUFFER IN EEPROM - ITERATIVE FOR MICROCONTROLLER
-  //
+  // works 90% of the time
 
   if (s_in.available())
   {
+    Serial.print("x");
+    
     // read byte into EEPROM
     b = s_in.read();
     if (eeprom_write_counter < 100)
@@ -107,7 +109,6 @@ void loop()
     num_bytes_rec++;
     serial_buffer_empty = false;
 
-//    delay(200);
     lcd.setCursor(0,0);
     lcd.print( num_bytes_rec );    
   }

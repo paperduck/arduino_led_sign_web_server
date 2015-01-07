@@ -22,7 +22,7 @@ Notes:
  */
 
 /****************************************************************/
-#include <LiquidCrystal.h>
+//#include <LiquidCrystal.h>
 #include <SPI.h>
 #include <Ethernet.h>
 #include <SD.h>
@@ -48,17 +48,18 @@ EthernetClient client = EthernetClient();
 SoftwareSerial             s_sign(2,3);
 SoftwareSerial             s_pc(5,6);   // pin 4 used for ethernet shield's SD card slave select 
 //byte                       b;
-boolean                    buf_available = false;
+boolean                    serial_buffer_empty = true;
 long                       time_since_last_rec_byte = millis() + 60000;
+const unsigned short int   chunk_size = 3;
+byte                       sign_packet_buffer[chunk_size]; 
+unsigned short int         num_bytes_sent_serial = 0; // counter for num bytes sent
+unsigned short int         num_bytes_rec_serial = 0;  // counter for num bytes received
 
 // diagnostic -----------------------------------
 //unsigned short int         num_requests = 0;   // counter for requests
-//unsigned long              num_bytes_sent = 0; // counter for num bytes sent
-//unsigned long              num_bytes_rec = 0;  // counter for num bytes received
 unsigned short int         status_code = 0;
 String                     serial_debug_string = "";
 unsigned long              time_of_last_serial_debug_print = millis();
-unsigned short             d1 = 100;
 unsigned short             d5 = 500;
 //short                      memory_available = 0;
 //short                      memory_available_min = 9999;
@@ -84,48 +85,40 @@ String                     default_media_type;
 byte                       temp_byte;
 
 // EEPROM - 1024 bytes -----------------------------------
-int                        eeprom_sign_buffer = 0; // EEPROM address 
-unsigned short             sign_buffer_length = 0;
+unsigned short int         sign_buffer_start = 0;
+unsigned short int         eeprom_write_counter = 0;
 
 /****************************************************************/
 void setup()
 {
   Serial.begin(9600); 
+  s_sign.begin(2400); // !!! the order that these serials are begun seems to matter !!!
+  s_pc.begin(2400); // !!! the order that these serials are begun seems to matter !!!
 
   // LCD screen
   //  lcd.begin(16,2);
 
-  //  lcd_print(0, 0, ".");
+  //Serial.println(F("."));
 
   // Ethernet
   while ( ! Ethernet.begin(mac) )
   {
-    //    lcd.clear();
-    //    lcd_print(0,0, F("E!"));  
-    delay(d1);
+    //Serial.println(F("eth"));
+    delay(10);
   }
+  Serial.println(F("eth OK"));
   server.begin(); // starts listening for incoming connections
-  //  lcd.clear();
-  //  lcd_print(0,0, F("Eok"));     
-  //  delay(d5);
-  //  lcd.clear();
-  //  lcd_print(0,0, Ethernet.localIP()); 
-  //  delay(d5);
 
   // SD card
   //f = (File *)malloc(sizeof(File));
   pinMode(10, OUTPUT);
   while ( ! SD.begin(4))
   {
-    Serial.print( F("SD not working\n") );
-    delay(d1);
+    //Serial.println( F("SD") );
+    delay(10);
   }
-  //  lcd.clear();
-  //  lcd_print(0,0, F("SDok")); 
-  //  delay(d5);  
-  //  lcd.clear();
+  Serial.println(F("SD OK"));
 
-  // 
   default_media_type = F("application/octet-stream");
 } 
 
@@ -141,30 +134,7 @@ boolean send_http_header(unsigned int file_size, String file_media_type, unsigne
   server.print( "\r\nContent-length: " );
   server.print( String(file_size) );
   server.print( "\r\n\r\n" );
-
-  // debugging
-  //Serial.println(String(status_code) + String(file_path_name_buf));
-  //
-  //  Serial.print( "\n\nHTTP/1.1 200 OK\r\nContent-Type: " );
-  //  Serial.print( file_media_type);
-  //  Serial.print( "\r\nContent-length: " );
-  //  Serial.print( String(file_size) );
-  //  Serial.print( "\n\n" );
 }
-
-/****************************************************************/
-//void lcd_print(int x, int y, String msg)
-//{
-//  lcd.setCursor(x, y);
-//  lcd.print(msg);
-//}
-
-/****************************************************************/
-//void lcd_print(int x, int y, IPAddress msg)
-//{
-//  lcd.setCursor(x, y);
-//  lcd.print(msg);
-//}
 
 /****************************************************************/
 //// by David A. Mellis / Rob Faludi http://www.faludi.com
@@ -192,16 +162,11 @@ boolean send_http_header(unsigned int file_size, String file_media_type, unsigne
 //}
 
 /****************************************************************/
-// Returns file media type, e.g.
-//   text/html
-//   image/gif 
-//   image/jpg
+// Returns file media type
+
 String get_file_media_type(String file_name)
 {
   long index_of = file_name.lastIndexOf(".");
-
-  //Serial.print( String(index_of) + F("\n") );
-  //Serial.print( String(file_name.substring(index_of)) + F("\n\n") );
 
   if (index_of == -1)
   {
@@ -212,22 +177,10 @@ String get_file_media_type(String file_name)
   {
     return F("text/html");
   }
-  //   else if (file_name.substring(index_of) == ".jpg")
-  //   {
-  //     return "image/jpg";
-  //   }
-  //   else if (file_name.substring(index_of) == ".jpeg")
-  //   {
-  //     return "image/jpeg";
-  //   }
   else if (file_name.substring(index_of) == F(".png"))
   {
     return F("image/png");
   }
-  //   else if (file_name.substring(index_of) == ".xml")
-  //   {
-  //     return "application/xml";
-  //   }
   else
   {
     // default case
@@ -238,7 +191,6 @@ String get_file_media_type(String file_name)
 /****************************************************************/
 void process_client()
 {
-  //Serial.println(F("process_client()\n"));
 
   //  lcd_print(15, 1, "c");
   appending_token = true;
@@ -248,7 +200,7 @@ void process_client()
   while (client.available())
   {
     cur_byte = client.read();
-    Serial.write(cur_byte);
+    //Serial.write(cur_byte);
 
     if (char(cur_byte) == char(' '))
     {
@@ -352,18 +304,6 @@ void process_client()
   char * file_path_name_buf = (char*)malloc( (sizeof(char) * file_path_name.length()) + 1 );
   file_path_name.toCharArray(file_path_name_buf, (file_path_name.length() + 1));
 
-  //  file_path_name_buf[0] = 'i';
-  //  file_path_name_buf[1] = 'n';
-  //  file_path_name_buf[2] = 'd';
-  //  file_path_name_buf[3] = 'e';
-  //  file_path_name_buf[4] = 'x';
-  //  file_path_name_buf[5] = '.';
-  //  file_path_name_buf[6] = 'h';
-  //  file_path_name_buf[7] = 't';
-  //  file_path_name_buf[8] = 'm';
-  //  file_path_name_buf[file_path_name.length()] = '\0'; // 
-  //  Serial.println(String("checking if ") + String( file_path_name_buf ) + String(" exists") );
-
   if (SD.exists(file_path_name_buf)) // costs 119 bytes ?
   {
     //    lcd_print(4, 0, "+");  
@@ -412,17 +352,10 @@ void process_client()
   // xxx any others?
 }
 
-
-/****************************************************************/
-void program_sign()
-{
-  s_sign.write( (char*)EEPROM.read(eeprom_sign_buffer), sign_buffer_length ); 
-}
-
 /****************************************************************/
 void loop()
 {
-  //  if (millis() - time_of_last_serial_debug_print > d1)
+  //  if (millis() - time_of_last_serial_debug_print > 10)
   //  {
   //    Serial.print(serial_debug_string);
   //    time_of_last_serial_debug_print = millis();
@@ -441,155 +374,91 @@ void loop()
   //  lcd_print(4, 1, "s" + String(num_bytes_sent) );    // num bytes sent
   //  lcd_print(9, 1, "r" + String(num_bytes_rec));      // num bytes received
 
-  if (client)
-  {
-    process_client();
-  }// end if(client)
-  else
-  {
-    // No client. 
-    //    lcd_print(15, 1, " "); // clear 'c'
 
-    // Check for incoming client.
-    client = server.available(); 
-  }
+  //  if (client)
+  //  {
+  //    process_client();
+  //  }// end if(client)
+  //  else
+  //  {
+  //    // No client. 
+  //    //    lcd_print(15, 1, " "); // clear 'c'
+  //
+  //    // Check for incoming client.
+  //    client = server.available(); 
+  //  }
+
 
 
   // listen for incoming serial communication
+  // xxx make sure bytes aren't arriving slower than i process them - consider delaying to allow EEPROM to finish filling
   if (s_pc.available())
-  {
+  {    
     // read byte into EEPROM
-    b = s_pc.read();
-    if (eeprom_write_counter < 100)
+    if (eeprom_write_counter < 80)
     {
-      EEPROM.write(num_bytes_rec, b );
+      EEPROM.write(num_bytes_rec_serial, s_pc.read() );
       eeprom_write_counter++;
     }
     else
     {
-      lcd.setCursor(0,0);
-      lcd.print( "EEPROM write max" );  
       return;
     }
-    num_bytes_rec++;
+    num_bytes_rec_serial ++;
     serial_buffer_empty = false;
-
-//    delay(200);
-    lcd.setCursor(0,0);
-    lcd.print( num_bytes_rec );    
+    
+    Serial.print("rec: ");
+    Serial.print(num_bytes_rec_serial);
+    Serial.print("\n");
   }
   else
-  {       
+  {      
     // see if bytes are waiting to be sent to sign
     if (!serial_buffer_empty)
     {
       // send bytes to sign, one chunk at a time
-      if (num_bytes_sent < num_bytes_rec)
+      if (num_bytes_sent_serial < num_bytes_rec_serial)
       {
         // check if "chunk-size" bytes should be sent, or the lesser remainder bytes. 
-        if (bytes_per_buffer_chunk < (num_bytes_rec - num_bytes_sent) )
+        if (chunk_size < (num_bytes_rec_serial - num_bytes_sent_serial) )
         {
           // load "chunk-size" bytes from EEPROM into SRAM
-          for (int i = 0; i < bytes_per_buffer_chunk; i++)
+          for (unsigned short int i = 0; i < chunk_size; i++)
           {
-            sign_packet_buffer[i] = EEPROM.read(num_bytes_sent + i);
+            sign_packet_buffer[i] = EEPROM.read(num_bytes_sent_serial + i);
           }
           // send chunk
-          num_bytes_sent += ( s_sign.write( sign_packet_buffer, bytes_per_buffer_chunk) ); 
-          
-          lcd.setCursor(0,1);
-          lcd.print ( num_bytes_sent );
+          num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, chunk_size) ); 
         }
         else
         {        
           // load remaining bytes from EEPROM into SRAM
-          for (int i = 0; i < (num_bytes_rec - num_bytes_sent); i++)
+          for (unsigned short int i = 0; i < (num_bytes_rec_serial - num_bytes_sent_serial); i++)
           {
-            sign_packet_buffer[i] = EEPROM.read(num_bytes_sent + i);
+            sign_packet_buffer[i] = EEPROM.read(num_bytes_sent_serial + i);
           }
           // send chunk
-          num_bytes_sent += ( s_sign.write( sign_packet_buffer, (num_bytes_rec - num_bytes_sent)) ); 
-          
-          lcd.setCursor(0,1);
-          lcd.print ( num_bytes_sent );
+          num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, (num_bytes_rec_serial - num_bytes_sent_serial)) ); 
+          Serial.println("last chunk");
         }
       }
       else
       {
         // done; reset state variables
         serial_buffer_empty = true;
-        num_bytes_rec = 0;
-        num_bytes_sent = 0;
+        num_bytes_rec_serial = 0;
+        num_bytes_sent_serial = 0;
       }
+      
+      Serial.print("sent: ");
+      Serial.print(num_bytes_sent_serial);
+      Serial.print("\n");
     }
   }  
-  
-  
-  
+
+
+
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
