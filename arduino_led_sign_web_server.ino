@@ -11,6 +11,7 @@ LED Adapter
  - xxx short ints
  - xxx triple-check memory allocation + deallocation
  - xxx retry upon 404, 204 a certain number of times
+ - xxx create functions for repeated code
  */
 
 /*
@@ -34,8 +35,7 @@ Notes:
 //LiquidCrystal lcd(A5, A4, A3, A2, A1, A0); // (rs, enable, d4, d5, d6, d7) 
 
 // Ethernet -----------------------------------
-byte mac[] = {
-  0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
+byte mac[] = {0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
 //byte ip[] = {
 //  10, 10, 151, 121};
 EthernetServer server = EthernetServer(80);
@@ -54,6 +54,8 @@ const unsigned short int   chunk_size = 3;
 byte                       sign_packet_buffer[chunk_size]; 
 unsigned short int         num_bytes_sent_serial = 0; // counter for num bytes sent
 unsigned short int         num_bytes_rec_serial = 0;  // counter for num bytes received
+unsigned short int         serial_incoming_outgoing_delay = 2000;
+long                       time_of_last_incoming_serial = 0;
 
 // diagnostic -----------------------------------
 //unsigned short int         num_requests = 0;   // counter for requests
@@ -85,8 +87,13 @@ String                     default_media_type;
 byte                       temp_byte;
 
 // EEPROM - 1024 bytes -----------------------------------
-unsigned short int         sign_buffer_start = 0;
+unsigned short int         sign_buffer_start = 200; // xxx change to 0 for production
 unsigned short int         eeprom_write_counter = 0;
+
+// Hard-coded sign message components -----------------------------------
+const byte                 color_red[1]       = {0xB0};
+const byte                 color_bright_red   = {0xB1};
+const byte                 color_orange       = {0xB2};
 
 /****************************************************************/
 void setup()
@@ -148,20 +155,6 @@ boolean send_http_header(unsigned int file_size, String file_media_type, unsigne
 //}
 
 /****************************************************************/
-//void refresh_memory_stats()
-//{
-//  memory_available = availableMemory();
-//  if (memory_available < memory_available_min)
-//  {
-//    memory_available_min = memory_available;
-//    lcd_print(0, 0, "    ");
-//    lcd_print(0, 1, "    ");
-//  }
-//  lcd_print(0, 0, String( memory_available )); 
-//  lcd_print(0, 1, String( memory_available_min )); 
-//}
-
-/****************************************************************/
 // Returns file media type
 
 String get_file_media_type(String file_name)
@@ -189,9 +182,90 @@ String get_file_media_type(String file_name)
 }
 
 /****************************************************************/
+void loop()
+{
+  if (client)
+  {
+    //process_client();
+    process_client_piecemeal();
+  }
+  else
+  {
+    // Check for incoming client.
+    client = server.available(); 
+  }
+
+  // listen for incoming serial communication
+  // xxx make sure bytes aren't arriving slower than i process them - consider delaying to allow EEPROM to finish filling
+  if (s_pc.available())
+  { 
+    // read byte into EEPROM
+    if (eeprom_write_counter < 500)
+    {
+      EEPROM.write(sign_buffer_start + num_bytes_rec_serial, s_pc.read() );
+      eeprom_write_counter++;
+    }
+    else
+    {
+      return;
+    }
+    num_bytes_rec_serial ++;
+    serial_buffer_empty = false;
+    time_of_last_incoming_serial = millis();
+  }
+  else
+  {      
+    // see if bytes are waiting to be sent to sign
+    if (!serial_buffer_empty && ((millis() - time_of_last_incoming_serial) > serial_incoming_outgoing_delay ) )
+    {
+      // send bytes to sign, one chunk at a time
+      if (num_bytes_sent_serial < num_bytes_rec_serial)
+      {
+        // check if "chunk-size" bytes should be sent, or the lesser remainder bytes. 
+        if (chunk_size < (num_bytes_rec_serial - num_bytes_sent_serial) )
+        {
+          // load "chunk-size" bytes from EEPROM into SRAM
+          for (unsigned short int i = 0; i < chunk_size; i++)
+          {
+            sign_packet_buffer[i] = EEPROM.read(sign_buffer_start + num_bytes_sent_serial + i);
+            Serial.print( String(" ") + String( sign_packet_buffer[i], HEX ) ); 
+          }
+          // send chunk
+          num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, chunk_size) ); 
+        }
+        else
+        {        
+          // load remaining bytes from EEPROM into SRAM
+          for (unsigned short int i = 0; i < (num_bytes_rec_serial - num_bytes_sent_serial); i++)
+          {
+            sign_packet_buffer[i] = EEPROM.read(sign_buffer_start + num_bytes_sent_serial + i);
+            Serial.print( String(" ") + String( sign_packet_buffer[i], HEX ) ); 
+          }
+          // send chunk
+          num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, (num_bytes_rec_serial - num_bytes_sent_serial)) ); 
+          Serial.println("\nlast chunk\n");
+        }
+      }
+      else
+      {        
+        // done; reset state variables
+        serial_buffer_empty = true;
+        num_bytes_rec_serial = 0;
+        num_bytes_sent_serial = 0;
+      }
+    }
+  }  
+}
+
+/****************************************************************/
+void process_client_piecemeal()
+{
+  ;
+}
+
+/****************************************************************/
 void process_client()
 {
-
   //  lcd_print(15, 1, "c");
   appending_token = true;
   cur_line_num = 1;
@@ -353,113 +427,6 @@ void process_client()
 }
 
 /****************************************************************/
-void loop()
-{
-  //  if (millis() - time_of_last_serial_debug_print > 10)
-  //  {
-  //    Serial.print(serial_debug_string);
-  //    time_of_last_serial_debug_print = millis();
-  //    // clear serial message buffer
-  //    serial_debug_string = "";
-  //  }
-
-  //refresh_memory_stats();
-
-  //  if (status_code < 10)
-  //  {
-  //    lcd_print(14, 1, " "); // clear error code 
-  //  }
-  //  lcd_print(13, 1, String(status_code)); // print error code
-  //  lcd_print(0, 1, "q" + String(num_requests) );      // num requests
-  //  lcd_print(4, 1, "s" + String(num_bytes_sent) );    // num bytes sent
-  //  lcd_print(9, 1, "r" + String(num_bytes_rec));      // num bytes received
-
-
-  //  if (client)
-  //  {
-  //    process_client();
-  //  }// end if(client)
-  //  else
-  //  {
-  //    // No client. 
-  //    //    lcd_print(15, 1, " "); // clear 'c'
-  //
-  //    // Check for incoming client.
-  //    client = server.available(); 
-  //  }
-
-
-
-  // listen for incoming serial communication
-  // xxx make sure bytes aren't arriving slower than i process them - consider delaying to allow EEPROM to finish filling
-  if (s_pc.available())
-  {    
-    // read byte into EEPROM
-    if (eeprom_write_counter < 80)
-    {
-      EEPROM.write(num_bytes_rec_serial, s_pc.read() );
-      eeprom_write_counter++;
-    }
-    else
-    {
-      return;
-    }
-    num_bytes_rec_serial ++;
-    serial_buffer_empty = false;
-    
-    Serial.print("rec: ");
-    Serial.print(num_bytes_rec_serial);
-    Serial.print("\n");
-  }
-  else
-  {      
-    // see if bytes are waiting to be sent to sign
-    if (!serial_buffer_empty)
-    {
-      // send bytes to sign, one chunk at a time
-      if (num_bytes_sent_serial < num_bytes_rec_serial)
-      {
-        // check if "chunk-size" bytes should be sent, or the lesser remainder bytes. 
-        if (chunk_size < (num_bytes_rec_serial - num_bytes_sent_serial) )
-        {
-          // load "chunk-size" bytes from EEPROM into SRAM
-          for (unsigned short int i = 0; i < chunk_size; i++)
-          {
-            sign_packet_buffer[i] = EEPROM.read(num_bytes_sent_serial + i);
-          }
-          // send chunk
-          num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, chunk_size) ); 
-        }
-        else
-        {        
-          // load remaining bytes from EEPROM into SRAM
-          for (unsigned short int i = 0; i < (num_bytes_rec_serial - num_bytes_sent_serial); i++)
-          {
-            sign_packet_buffer[i] = EEPROM.read(num_bytes_sent_serial + i);
-          }
-          // send chunk
-          num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, (num_bytes_rec_serial - num_bytes_sent_serial)) ); 
-          Serial.println("last chunk");
-        }
-      }
-      else
-      {
-        // done; reset state variables
-        serial_buffer_empty = true;
-        num_bytes_rec_serial = 0;
-        num_bytes_sent_serial = 0;
-      }
-      
-      Serial.print("sent: ");
-      Serial.print(num_bytes_sent_serial);
-      Serial.print("\n");
-    }
-  }  
-
-
-
-}
-
 
 
 
