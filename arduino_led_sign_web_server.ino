@@ -35,17 +35,19 @@ Notes:
 //LiquidCrystal lcd(A5, A4, A3, A2, A1, A0); // (rs, enable, d4, d5, d6, d7) 
 
 // Ethernet -----------------------------------
-byte mac[] = {0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
+byte mac[] = {
+  0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
 //byte ip[] = {
 //  10, 10, 151, 121};
 EthernetServer server = EthernetServer(80);
 EthernetClient client = EthernetClient();
 
 // TCP communication -----------------------------------
-bool                       tcp_incoming = false;
 bool                       method_post = false;
 //int                        num_bytes_rec_tcp = 0;
 //int                        num_bytes_sent_tcp = 0;
+bool                       header_needs_to_be_sent = true;
+bool                       tcp_do_send = false;
 
 // SD card -----------------------------------
 File                       f; // file to read from SD card
@@ -67,6 +69,7 @@ unsigned short int         num_bytes_sent_serial = 0; // counter for num bytes s
 unsigned short int         num_bytes_rec_serial = 0;  // counter for num bytes received
 unsigned short int         serial_incoming_outgoing_delay = 1000;
 long                       time_of_last_incoming_serial = 0;
+unsigned int               num_bytes_last_received = 0;
 
 // diagnostic -----------------------------------
 //unsigned short int         num_requests = 0;   // counter for requests
@@ -81,18 +84,18 @@ unsigned short             d5 = 500;
 byte                       cur_byte;
 String                     token = "";
 unsigned long              cur_line_num = 1;   // 1-based. 0 means no lines yet. (lines of incoming header)
-unsigned short int         cur_token_index = 0;  // 0-based. e.g. GET will have token index 0. Filename 1. HTTP version 2.
+unsigned short int         cur_token_num = 0;  // 1-based. e.g. GET will have token index 1, Filename 2, HTTP version 3.
 //String                     request_type = ""; // GET, POST
 String                     file_path_name = ""; // file requested + args
 char *                     file_path_name_buf; // char* for passing into SD.exists(), SD.open()
 //String                   file_path_name_trimmed = ""; // file requested + args
 //String                   http_version_client = ""; // HTTP version specified by client
-boolean                    appending_token = true;
+boolean                    start_new_token = true;
 long                       index_of; // stores result of String.indexOf()
 
 // File stuff -----------------------------------
 String                     file_media_type; // a.k.a. MIME type, a.k.a. Content-type
-String                     default_media_type;
+//String                     default_media_type;
 
 // debugging -----------------------------------
 byte                       temp_byte;
@@ -116,10 +119,11 @@ void setup()
   // LCD screen
   //  lcd.begin(16,2);
 
+  Serial.println(".");
   // Ethernet
   while ( ! Ethernet.begin(mac) )
   {
-    delay(10);
+    ;//delay(10);
   }
   Serial.println(F("eth"));
   server.begin(); // starts listening for incoming connections
@@ -128,11 +132,11 @@ void setup()
   pinMode(10, OUTPUT); // xxx why is this here
   while ( ! SD.begin(4))
   {
-    delay(10);
+    ;//delay(10);
   }
   Serial.println(F("SD"));
 
-  default_media_type = F("application/octet-stream");
+  //  default_media_type = F("application/octet-stream");
 } 
 
 /****************************************************************/
@@ -140,13 +144,13 @@ void setup()
 // 'file_media_type' should be a media type, e.g. "image/png", "text/html".
 //   http://en.wikipedia.org/wiki/Internet_media_type#Type_image
 //
-boolean send_http_header(unsigned int file_size, String file_media_type, unsigned short status_code)
+boolean send_http_header(unsigned long file_size, String file_media_type)
 {  
-  server.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
+  server.print( F("HTTP/1.1 200 OK\r\nContent-Type: ") );
   server.print( file_media_type);
-  server.print( "\r\nContent-length: " );
-  server.print( String(file_size) );
-  server.print( "\r\n\r\n" );
+  server.print( F("\r\nContent-length: ") );
+  server.print( file_size ); // xxx make sure I don't need to cast to String
+  server.print( F("\r\n\r\n") );
 }
 
 /****************************************************************/
@@ -159,21 +163,35 @@ String get_file_media_type(String file_name)
   if (index_of == -1)
   {
     // no period found, use a default type
-    return default_media_type;
-  }
-  else if (file_name.substring(index_of) == F(".htm") || file_name.substring(index_of) == F(".html"))
-  {
     return F("text/html");
   }
   else if (file_name.substring(index_of) == F(".png"))
   {
     return F("image/png");
   }
-  else
+  else 
   {
-    // default case
-    return default_media_type; 
+    return F("text/html");
   }
+
+  //  if (index_of == -1)
+  //  {
+  //    // no period found, use a default type
+  //    return default_media_type;
+  //  }
+  //  else if (file_name.substring(index_of) == F(".htm") || file_name.substring(index_of) == F(".html"))
+  //  {
+  //    return F("text/html");
+  //  }
+  //  else if (file_name.substring(index_of) == F(".png"))
+  //  {
+  //    return F("image/png");
+  //  }
+  //  else
+  //  {
+  //    // default case
+  //    return default_media_type; 
+  //  }
 }
 
 /****************************************************************/
@@ -199,7 +217,7 @@ void serial_listen()
   // listen for incoming serial communication
   if (s_pc.available())
   { 
-    // read byte into EEPROM
+    // read a byte into EEPROM
     if (eeprom_write_counter < 500)
     {
       EEPROM.write(sign_buffer_start + num_bytes_rec_serial, s_pc.read() );
@@ -207,7 +225,7 @@ void serial_listen()
     }
     else
     {
-      Serial.println(F("EEPROM maxed"));
+      Serial.println(F("EEPROM"));
       return;
     }
     num_bytes_rec_serial ++;
@@ -216,45 +234,60 @@ void serial_listen()
   else
   {      
     // send bytes to sign, one chunk at a time
-    if (num_bytes_sent_serial < num_bytes_rec_serial && num_bytes_rec_serial > 0)
+    if (num_bytes_rec_serial > 0)
     {
-      // There are bytes that have been received and are waiting in EEPROM to be sent.
-      // There is a delay here to allow time for bytes to arrive from PC.
-      // Things could get messy if the message starts to get sent before bytes are finished arriving.
-      if ( (millis() - time_of_last_incoming_serial) > serial_incoming_outgoing_delay )
+      if (num_bytes_sent_serial < num_bytes_rec_serial)
       {
-        // check if "chunk-size" bytes should be sent, or the lesser remainder bytes. 
-        if (chunk_size < (num_bytes_rec_serial - num_bytes_sent_serial) )
+        // There are bytes that have been received and are waiting in EEPROM to be sent.
+        // There is a delay here to allow time for bytes to arrive from PC.
+        //   Sending will reset prematurely if bytes are sent too quickly, which would
+        //   result in garbage being sent to sign.
+        if ( (millis() - time_of_last_incoming_serial) > serial_incoming_outgoing_delay )
         {
-          // load "chunk-size" bytes from EEPROM into SRAM
-          for (unsigned short int i = 0; i < chunk_size; i++)
+          // check if "chunk-size" bytes should be sent, or the lesser remainder bytes. 
+          if (chunk_size < (num_bytes_rec_serial - num_bytes_sent_serial) )
           {
-            sign_packet_buffer[i] = EEPROM.read(sign_buffer_start + num_bytes_sent_serial + i);
-            //Serial.print( String(" ") + String( sign_packet_buffer[i], HEX ) ); 
+            // load "chunk-size" bytes from EEPROM into SRAM
+            for (unsigned short int i = 0; i < chunk_size; i++)
+            {
+              sign_packet_buffer[i] = EEPROM.read(sign_buffer_start + num_bytes_sent_serial + i);
+              //Serial.print( String(" ") + String( sign_packet_buffer[i], HEX ) ); 
+            }
+            // send chunk
+            num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, chunk_size) ); 
           }
-          // send chunk
-          num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, chunk_size) ); 
-        }
-        else
-        {        
-          // load remaining bytes from EEPROM into SRAM
-          for (unsigned short int i = 0; i < (num_bytes_rec_serial - num_bytes_sent_serial); i++)
-          {
-            sign_packet_buffer[i] = EEPROM.read(sign_buffer_start + num_bytes_sent_serial + i);
-            //Serial.print( String(" ") + String( sign_packet_buffer[i], HEX ) ); 
+          else
+          {        
+            // load remaining bytes from EEPROM into SRAM
+            for (unsigned short int i = 0; i < (num_bytes_rec_serial - num_bytes_sent_serial); i++)
+            {
+              sign_packet_buffer[i] = EEPROM.read(sign_buffer_start + num_bytes_sent_serial + i);
+              //Serial.print( String(" ") + String( sign_packet_buffer[i], HEX ) ); 
+            }
+            // send chunk
+            num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, (num_bytes_rec_serial - num_bytes_sent_serial)) ); 
+
           }
-          // send chunk
-          num_bytes_sent_serial += ( s_sign.write( sign_packet_buffer, (num_bytes_rec_serial - num_bytes_sent_serial)) ); 
         }
       }
-    }
-    else
-    {        
-      // done forwarding message to sign; reset state variables
-      num_bytes_rec_serial = 0;
-      num_bytes_sent_serial = 0;
+      else
+      {
+        // all received bytes have been sent, so reset
+        num_bytes_last_received = num_bytes_rec_serial;
+        num_bytes_rec_serial = 0;
+        num_bytes_sent_serial = 0;
+      }
     }
   }  
+}
+
+/****************************************************************/
+// Purpose:
+// Revert sign to the message that was programmed using manufacturer's software.
+void restore_sign()
+{
+  // this just triggers a re-reading of bytes already stored in memory
+  num_bytes_rec_serial = num_bytes_last_received;
 }
 
 /****************************************************************/
@@ -262,40 +295,30 @@ void process_client_piecemeal()
 { 
   if (client)
   {
-    Serial.println("client");
-    // sending or receiving?
-    if (tcp_incoming) 
+    if (!tcp_do_send)
     {
-      // receiving data from client.    
+      // receive data from client.    
       cur_byte = client.read();
 
       if (cur_byte == 0xFF) // 0xFF == EOF == -1 as char
       {
-        // EOF
-        // reset counters  xxx
-        token = "";
-        cur_token_index = 0;
-        cur_line_num = 1;
-        appending_token = false;
-        //num_requests++; // tally this "request"
-        free(file_path_name_buf); // super-important memory deallocation
-
-        cur_file_exists_attempts = 0;
-        cur_file_open_attempts = 0;
+        tcp_reset_receive();
       }
       else
       {
         // if whitespace
         if (char(cur_byte) == char(' '))
         {
-          appending_token = false;
+          start_new_token = true;
+          token.toLowerCase();
+
           // process token that just finished arriving
           switch (cur_line_num)
           {
           case 1: // cur_line_num
-            switch (cur_token_index)
+            switch (cur_token_num)
             {
-            case 0: // cur_token_index
+            case 1: // cur_token_num
               // GET or POST?
               if (token == "GET")
               {
@@ -311,19 +334,19 @@ void process_client_piecemeal()
               }
               break;
 
-            case 1: // cur_token_index
+            case 2:
               // This token should be the file requested.
-              //file_path_name_buf_string = token; 
               file_path_name_buf = (char*)malloc((token.length() * sizeof(char)) + 1);
               token.toCharArray( file_path_name_buf, token.length() + 1 );
+              file_path_name = token;
               break;
 
-            case 2:
+            case 3:
               // protocol version should be followed by CRLF, not (SP)
               // xxx    400 (Bad Request) error
               break;
 
-            default: // cur_token_index
+            default: // cur_token_num
               break;  
             }
             break;
@@ -331,19 +354,20 @@ void process_client_piecemeal()
           default: // cur_line_num
             break;
           }
-          appending_token = false; // cur byte is a space, so no longer 
+          start_new_token = true; // cur byte is a space, so no longer 
         }
         else if( char(cur_byte) == char('\r') )
         {
-          if (cur_line_num == 1 && cur_token_index == 2)
+          if (cur_line_num == 1 && cur_token_num == 3)
           {
             // This token should be protocol (HTTP) version 
             if (token.length() >= 4)
             {
-              if (token.startsWith("HTTP")) // xxx convert token to lowercase
+              if (token.startsWith("HTTP"))
               {
-                ; // good to go 
-                tcp_incoming = false; // send response
+                // good to go 
+                tcp_reset_receive();
+                tcp_do_send = true;
               }
               else
               {
@@ -353,7 +377,6 @@ void process_client_piecemeal()
             else
             { 
               ; // xxx    505  (HTTP Version Not Supported) 
-
             }            
           }
           else
@@ -364,26 +387,27 @@ void process_client_piecemeal()
         else if(char(cur_byte) == char('\n'))
         {        
           cur_line_num++; // increment the \n
-          appending_token = false; // reset just in case spaces at end of last line
-          cur_token_index = 0; // back to first token
+          start_new_token = true; // reset just in case spaces at end of last line
+          cur_token_num = 0; // back to first token
         }
         else
         {
           // non-whitespace, so append to token
-          if (!appending_token)
+          if (start_new_token)
           {
             // starting a new token
-            cur_token_index++;
+            cur_token_num++;
             token = "";
-            appending_token = true;
+            start_new_token = false;
           }
-          token += String(char(cur_byte));
+          token += char(cur_byte);
         }
-      }
+      }   
     }
-    else
+
+    if (tcp_do_send) // xxx use else
     {
-      // sending data to client(s)
+      // sending data to client
       if (!file_exists)
       {
         // attempt to check if file exists, if attempts not already maxed
@@ -393,16 +417,15 @@ void process_client_piecemeal()
           cur_file_exists_attempts ++;
           if (SD.exists(file_path_name_buf))
           {
-            Serial.println("file exists");
             file_exists = true;
           }
         }
         else
         {
-           // existence check attempts exceeded
-           Serial.print("404");
-            // xxx send 404 response
-            tcp_disconnect();
+          // existence check attempts exceeded
+          // xxx send 404 response
+          tcp_reset_send();
+          tcp_disconnect();
         }
       }
       else
@@ -417,7 +440,6 @@ void process_client_piecemeal()
             f = SD.open(file_path_name_buf, FILE_READ);
             if (f) // evaluates to false if file couldn't be opened ~ http://arduino.cc/en/Reference/SDopen
             {
-             Serial.print("file open");
               file_open = true;
             }
           }
@@ -425,26 +447,37 @@ void process_client_piecemeal()
           {
             // file open attempts exceeded
             // xxx send http error
-            Serial.print("file not opened");
+            tcp_reset_send();
             tcp_disconnect();
           }
         }
         else
-        {          
-          // file is ready, so send a byte
+        {        
+          // file is ready
+
+          if (header_needs_to_be_sent)
+          {
+            // send header
+            send_http_header(f.size(), get_file_media_type(file_path_name));
+            header_needs_to_be_sent = false;
+          }
+
+          // send a byte
           if (f.available())
           {
             // read a byte, send it
-            server.write(f.read()); 
+            cur_byte = f.read();
+            server.write( cur_byte );
           }
           else
           {
             // nothing to read, so close file and finish up response
+            tcp_reset_send();
             tcp_disconnect();
           }
         }
-      }        
-    }
+      }
+    }     
   }
   else
   {
@@ -455,23 +488,43 @@ void process_client_piecemeal()
 }
 
 /****************************************************************/
-void tcp_disconnect()
+void tcp_reset_receive()
 {
-  f.close();      
+  // reset for listening
+  token = "";
+  cur_token_num = 0;
+  cur_line_num = 1;
+  start_new_token = true;
+}
+
+void tcp_reset_send()
+{
+  free(file_path_name_buf); // super-important memory deallocation
+  f.close();  
+  header_needs_to_be_sent = true;
+  cur_file_exists_attempts = 0;
+  cur_file_open_attempts = 0;
+  file_exists = false;
+  file_open = false;
+  tcp_do_send = false;
+}
+
+void tcp_disconnect()
+{   
+  // disconnect client 
   if (client.connected())
   {
     client.stop();  // disconnect the client
   }
-  tcp_incoming = true;
 }
 
 /****************************************************************/
 //void process_client()
 //{
 //  //  lcd_print(15, 1, "c");
-//  appending_token = true;
+//  start_new_token = false;
 //  cur_line_num = 1;
-//  cur_token_index = 0;
+//  cur_token_num = 0;
 //  // read in all data from client, then process it.
 //  while (client.available())
 //  {
@@ -481,14 +534,14 @@ void tcp_disconnect()
 //    if (char(cur_byte) == char(' '))
 //    {
 //      // space
-//      if (appending_token)
+//      if (start_new_token)
 //      {
 //        // current token ended
-//        appending_token = false;
+//        start_new_token = false;
 //        switch (cur_line_num)
 //        {
 //        case 1:
-//          switch(cur_token_index)
+//          switch(cur_token_num)
 //          {
 //          case 0:
 //            // request type (GET, POST, ...)
@@ -497,7 +550,7 @@ void tcp_disconnect()
 //          case 1:
 //            // file requested
 //            file_path_name = token;
-//            file_path_name.toLowerCase(); // convert to lower case 
+//            file_path_name.toLowerCase();
 //            if (file_path_name == "/" || file_path_name == "\\")
 //            {
 //              file_path_name = "index.htm";
@@ -524,14 +577,14 @@ void tcp_disconnect()
 //    else if (char(cur_byte) == char('\r'))
 //    {
 //      // carriage return
-//      if (appending_token)
+//      if (start_new_token)
 //      {
 //        // current token ended
-//        appending_token = false;
+//        start_new_token = false;
 //        switch (cur_line_num)
 //        {
 //        case 1:
-//          switch(cur_token_index)
+//          switch(cur_token_num)
 //          {
 //          case 2:
 //            //http_version_client = token;
@@ -550,20 +603,20 @@ void tcp_disconnect()
 //    {
 //      // newline
 //      cur_line_num ++;
-//      cur_token_index = 0;
+//      cur_token_num = 0;
 //    }
 //    else
 //    {
 //      // non-whitespace 
-//      if (!appending_token)
+//      if (!start_new_token)
 //      {
 //        // starting a new token
 //        token = "";
-//        cur_token_index ++;
+//        cur_token_num ++;
 //        // check length of token, make sure it's not too long
 //        // xxx
 //      }
-//      appending_token = true;
+//      start_new_token = true;
 //      token += String(char(cur_byte));
 //    }
 //  }// end while
@@ -629,6 +682,14 @@ void tcp_disconnect()
 //}
 
 /****************************************************************/
+
+
+
+
+
+
+
+
 
 
 
