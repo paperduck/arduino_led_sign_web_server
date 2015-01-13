@@ -12,6 +12,7 @@ LED Adapter
  - xxx triple-check memory allocation + deallocation
  - xxx retry upon 404, 204 a certain number of times
  - xxx create functions for repeated code
+ - xxx restore alert (including countown) if power goes out
  */
 
 /*
@@ -43,9 +44,6 @@ EthernetServer server = EthernetServer(80);
 EthernetClient client = EthernetClient();
 
 // TCP communication -----------------------------------
-bool                       method_post = false;
-//int                        num_bytes_rec_tcp = 0;
-//int                        num_bytes_sent_tcp = 0;
 bool                       header_needs_to_be_sent = true;
 bool                       tcp_do_send = false;
 
@@ -53,10 +51,10 @@ bool                       tcp_do_send = false;
 File                       f; // file to read from SD card
 bool                       file_exists = false;
 bool                       file_open = false;
-unsigned short int         cur_file_exists_attempts = 0;
-unsigned short int         max_file_exists_attempts = 10;
-unsigned short int         cur_file_open_attempts = 0;
-unsigned short int         max_file_open_attempts = 10;
+byte                       cur_file_exists_attempts = 0;
+const byte                 max_file_exists_attempts = 10;
+byte                       cur_file_open_attempts = 0;
+const byte                 max_file_open_attempts = 10;
 
 // Serial -----------------------------------
 SoftwareSerial             s_sign(2,3);
@@ -71,12 +69,7 @@ unsigned short int         serial_incoming_outgoing_delay = 1000;
 long                       time_of_last_incoming_serial = 0;
 unsigned int               num_bytes_last_received = 0;
 
-// diagnostic -----------------------------------
-//unsigned short int         num_requests = 0;   // counter for requests
-unsigned short int         status_code = 0;
-String                     serial_debug_string = "";
-unsigned long              time_of_last_serial_debug_print = millis();
-unsigned short             d5 = 500;
+// diagnostic/debugging -----------------------------------
 //short                      memory_available = 0;
 //short                      memory_available_min = 9999;
 
@@ -85,58 +78,68 @@ byte                       cur_byte;
 String                     token = "";
 unsigned long              cur_line_num = 1;   // 1-based. 0 means no lines yet. (lines of incoming header)
 unsigned short int         cur_token_num = 0;  // 1-based. e.g. GET will have token index 1, Filename 2, HTTP version 3.
-//String                     request_type = ""; // GET, POST
 String                     file_path_name = ""; // file requested + args
 char *                     file_path_name_buf; // char* for passing into SD.exists(), SD.open()
-//String                   file_path_name_trimmed = ""; // file requested + args
-//String                   http_version_client = ""; // HTTP version specified by client
 boolean                    start_new_token = true;
-long                       index_of; // stores result of String.indexOf()
+byte                       index_of; // stores result of String.indexOf()
+byte                       index_of2; // for String.substring()
 
 // File stuff -----------------------------------
 String                     file_media_type; // a.k.a. MIME type, a.k.a. Content-type
-//String                     default_media_type;
-
-// debugging -----------------------------------
-byte                       temp_byte;
 
 // EEPROM - 1024 bytes -----------------------------------
-unsigned short int         sign_buffer_start = 200; // xxx change to 0 (or whatever) for production
+const unsigned short int   sign_buffer_start = 200; // xxx change to 0 (or whatever) for production
 unsigned short int         eeprom_write_counter = 0; // xxx comment out for production
 
-// Hard-coded sign message components -----------------------------------
+// alert settings -----------------------------------
+char                       param; // holds parameter name  
+String                     sign_text = ""; // param: t
+unsigned long              duration_seconds = 0; // param: d
+//byte                       method = 0; // param: m
+//byte                       color = 0; // param=c
+
+// sign values -----------------------------------
 //const byte                 color_red[1]       = {0xB0};
 //const byte                 color_bright_red   = {0xB1};
 //const byte                 color_orange       = {0xB2};
+const byte                 sign_packet_header[10] = {
+  0x00, 0xFF, 0xFF, 0x00, 0x0B, 0x01, 0xFF, 0x01, 0x30, 0x31};
+const byte                 sign_packet_spacer[] = {
+  0xEF};
+const byte                 sign_packet_color[] = {
+  0xB0};
+const byte                 sign_packet_method[] = {
+  0x13};
+const byte                 sing_packet_font[] = {
+  0xA2};
+const byte                 sign_packet_tail[] = {
+  0xFF, 0xFF, 0x00};
 
 /****************************************************************/
 void setup()
 {
-  Serial.begin(9600); 
+  Serial.begin(9600); // ~300 bytes program space memory. 
   s_sign.begin(2400); // !!! the order that these serials are begun seems to matter !!!
   s_pc.begin(2400); // !!! the order that these serials are begun seems to matter !!!
 
   // LCD screen
   //  lcd.begin(16,2);
 
-  Serial.println(".");
   // Ethernet
+  // SD card
+  //pinMode(10, OUTPUT); // xxx why is this here
+  Serial.println(F("."));
   while ( ! Ethernet.begin(mac) )
   {
-    ;//delay(10);
+    ;
   }
-  Serial.println(F("eth"));
-  server.begin(); // starts listening for incoming connections
-
-  // SD card
-  pinMode(10, OUTPUT); // xxx why is this here
+  Serial.println(F("ETH"));
   while ( ! SD.begin(4))
   {
-    ;//delay(10);
+    ;
   }
   Serial.println(F("SD"));
-
-  //  default_media_type = F("application/octet-stream");
+  server.begin(); // starts listening for incoming connections
 } 
 
 /****************************************************************/
@@ -146,6 +149,13 @@ void setup()
 //
 boolean send_http_header(unsigned long file_size, String file_media_type)
 {  
+  //  server.print( F("HTTP/1.1 200 OK\r\nContent-Type: ") );
+  //  server.print( file_media_type);
+  //  server.print( F("\r\nContent-length: ") );
+  //  server.print( file_size ); // xxx make sure I don't need to cast to String
+  //  server.print( F("\r\n\r\n") );
+
+
   server.print( F("HTTP/1.1 200 OK\r\nContent-Type: ") );
   server.print( file_media_type);
   server.print( F("\r\nContent-length: ") );
@@ -158,7 +168,7 @@ boolean send_http_header(unsigned long file_size, String file_media_type)
 
 String get_file_media_type(String file_name)
 {
-  long index_of = file_name.lastIndexOf(".");
+  long index_of = file_name.lastIndexOf(F("."));
 
   if (index_of == -1)
   {
@@ -173,25 +183,6 @@ String get_file_media_type(String file_name)
   {
     return F("text/html");
   }
-
-  //  if (index_of == -1)
-  //  {
-  //    // no period found, use a default type
-  //    return default_media_type;
-  //  }
-  //  else if (file_name.substring(index_of) == F(".htm") || file_name.substring(index_of) == F(".html"))
-  //  {
-  //    return F("text/html");
-  //  }
-  //  else if (file_name.substring(index_of) == F(".png"))
-  //  {
-  //    return F("image/png");
-  //  }
-  //  else
-  //  {
-  //    // default case
-  //    return default_media_type; 
-  //  }
 }
 
 /****************************************************************/
@@ -208,7 +199,7 @@ void loop()
     client = server.available(); 
   }
 
-  serial_listen();
+  //  serial_listen();
 }
 
 /****************************************************************/
@@ -222,11 +213,6 @@ void serial_listen()
     {
       EEPROM.write(sign_buffer_start + num_bytes_rec_serial, s_pc.read() );
       eeprom_write_counter++;
-    }
-    else
-    {
-      Serial.println(F("EEPROM"));
-      return;
     }
     num_bytes_rec_serial ++;
     time_of_last_incoming_serial = millis();
@@ -291,6 +277,34 @@ void restore_sign()
 }
 
 /****************************************************************/
+// Purpose:
+//
+void program_sign(String sign_text, unsigned long duration)
+{
+  //  for (byte i = 0; i < 10; i++)
+  //  {
+  //  s_sign.writ( String( sign_packet_header[i], HEX ) ); 
+  //  }  
+  //  s_sign.print(  String( sign_packet_spacer[0], HEX ) ); 
+  //  s_sign.print(  String( sign_packet_color[0], HEX ) ); 
+  //  s_sign.print(  String( sign_packet_spacer[0], HEX ) ); 
+  //  s_sign.print(  String( sing_packet_font[0], HEX ) ); 
+  //  s_sign.print( String(0x62, HEX) ); 
+  //  s_sign.print(  String( sign_packet_tail[0], HEX ) ); 
+  //  s_sign.print(  String( sign_packet_tail[1], HEX ) ); 
+  //  s_sign.print(  String( sign_packet_tail[2], HEX ) ); 
+
+
+  s_sign.write(sign_packet_header, 10);
+  s_sign.write(sign_packet_spacer, 1);
+  s_sign.write(sign_packet_color, 1);
+  s_sign.write(sign_packet_spacer, 1);
+  s_sign.write(sing_packet_font, 1);
+  s_sign.write(sign_text);
+  s_sign.write(sign_packet_tail, 3);
+}
+
+/****************************************************************/
 void process_client_piecemeal()
 { 
   if (client)
@@ -318,27 +332,41 @@ void process_client_piecemeal()
           case 1: // cur_line_num
             switch (cur_token_num)
             {
-            case 1: // cur_token_num
-              // GET or POST?
-              if (token == "GET")
+            case 2:
+              // This token should be the file requested.
+              // parse arguments, if any
+              index_of = token.indexOf('?');
+              if (index_of > -1)
               {
-                method_post = false;
-              }
-              else if (token == "POST")
-              {
-                method_post = true;
+                // there are arguments
+                param = (token[index_of + 1]);
+                if (param == 't')
+                {
+                  // text
+                  index_of += 3;
+                  index_of2 = token.indexOf('&');
+                  // if (index_of2 < -1)
+                  sign_text = token.substring(index_of, index_of2);
+                  //                  Serial.println(sign_text);
+                }
+                if (param == 'd')
+                {
+                  // duration
+                  index_of ++;
+                  ;
+                }
               }
               else
               {
-                ;
+                // no arguments 
+                file_path_name_buf = (char*)malloc((token.length() * sizeof(char)) + 1);
+                token.toCharArray( file_path_name_buf, token.length() + 1 );              
+                file_path_name = token;
               }
-              break;
 
-            case 2:
-              // This token should be the file requested.
-              file_path_name_buf = (char*)malloc((token.length() * sizeof(char)) + 1);
-              token.toCharArray( file_path_name_buf, token.length() + 1 );
-              file_path_name = token;
+              //              file_path_name_buf = (char*)malloc((token.length() * sizeof(char)) + 1);
+              //              token.toCharArray( file_path_name_buf, token.length() + 1 );              
+              //              file_path_name = token;
               break;
 
             case 3:
@@ -361,27 +389,20 @@ void process_client_piecemeal()
           if (cur_line_num == 1 && cur_token_num == 3)
           {
             // This token should be protocol (HTTP) version 
-            if (token.length() >= 4)
+            if (token.startsWith("HTTP"))
             {
-              if (token.startsWith("HTTP"))
-              {
-                // good to go 
-                tcp_reset_receive();
-                tcp_do_send = true;
-              }
-              else
-              {
-                ; // xxx    505  (HTTP Version Not Supported) 
-              }
+              // good to go 
+              tcp_reset_receive();
+              tcp_do_send = true;
             }
             else
-            { 
+            {
               ; // xxx    505  (HTTP Version Not Supported) 
-            }            
+            }          
           }
           else
           {
-            ; // xxx handle other lines here as needed
+            ; // xxx parse other lines of request as needed
           }
         }
         else if(char(cur_byte) == char('\n'))
@@ -404,8 +425,7 @@ void process_client_piecemeal()
         }
       }   
     }
-
-    if (tcp_do_send) // xxx use else
+    else
     {
       // sending data to client
       if (!file_exists)
@@ -423,9 +443,13 @@ void process_client_piecemeal()
         else
         {
           // existence check attempts exceeded
-          // xxx send 404 response
+          // 404   
+          send_http_header(10, F("text/plain")); // xxx This takes roughly 50 bytes program memory
+          server.print(F("404")); // xxx this takes about 16 bytes program memory
           tcp_reset_send();
           tcp_disconnect();
+
+          program_sign("testo", 60);
         }
       }
       else
@@ -497,6 +521,7 @@ void tcp_reset_receive()
   start_new_token = true;
 }
 
+/****************************************************************/
 void tcp_reset_send()
 {
   free(file_path_name_buf); // super-important memory deallocation
@@ -509,6 +534,7 @@ void tcp_reset_send()
   tcp_do_send = false;
 }
 
+/****************************************************************/
 void tcp_disconnect()
 {   
   // disconnect client 
@@ -682,6 +708,11 @@ void tcp_disconnect()
 //}
 
 /****************************************************************/
+
+
+
+
+
 
 
 

@@ -10,7 +10,7 @@ ff
 31
 [1-25]	moving method
 ef		spacer ?
-94		cartoon
+[94]	cartoon
 [
 b0		color
 			b0 = Red
