@@ -1,0 +1,10 @@
+# web images
+www/img/*
+
+# notes
+#notes/*
+
+# temp files
+*~
+
+backups/*
