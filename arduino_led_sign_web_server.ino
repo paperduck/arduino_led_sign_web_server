@@ -36,10 +36,10 @@ Notes:
 //LiquidCrystal lcd(A5, A4, A3, A2, A1, A0); // (rs, enable, d4, d5, d6, d7) 
 
 // Ethernet -----------------------------------
-byte mac[] = {
-  0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
+//byte mac[] = {
+//  0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
 //byte ip[] = {
-//  10, 10, 151, 121};
+//  192, 168, 1, 203};
 EthernetServer server = EthernetServer(80);
 EthernetClient client = EthernetClient();
 
@@ -66,7 +66,7 @@ byte                       num_bytes_sent_serial = 0; // counter for num bytes s
 byte                       num_bytes_rec_serial = 0;  // counter for num bytes received
 byte                       serial_incoming_outgoing_delay = 1000;
 unsigned long              time_of_last_incoming_serial = 0;
-byte                       num_bytes_last_received = 0;
+byte                       num_bytes_last_received_serial = 0;
 
 // diagnostic/debugging -----------------------------------
 //short                      memory_available = 0;
@@ -82,12 +82,14 @@ char *                     file_path_name_buf; // char* for passing into SD.exis
 boolean                    start_new_token = true;
 short int                  index_of; // stores result of String.indexOf()
 short int                  index_of2; // for String.substring()
+short int                  index_of_decode;
 
 // File stuff -----------------------------------
 String                     file_media_type; // a.k.a. MIME type, a.k.a. Content-type
 
 // EEPROM - 1024 bytes -----------------------------------
-const unsigned short int   sign_buffer_start = 200; // xxx change to 0 (or whatever) for production
+const byte                 num_bytes_last_received_serial_start = 0;
+const byte                 sign_buffer_start = 1; // xxx change to 0 (or whatever) for production
 unsigned short int         eeprom_write_counter = 0; // xxx comment out for production
 
 // alert settings -----------------------------------
@@ -96,7 +98,7 @@ String                     sign_text = ""; // param: t
 unsigned long              duration_seconds = 1; // param: d
 //byte                       method = 0; // param: m
 //byte                       color = 0; // param=c
-unsigned long               time_of_last_program_ms = millis(); // xxx change this to accomdate power outage (use EEPROM)
+unsigned long              time_of_last_program_ms = millis(); // xxx change this to accomdate power outage (use EEPROM)
 bool                       alert_active = false;
 
 // sign values -----------------------------------
@@ -126,21 +128,50 @@ void setup()
   // LCD screen
   //  lcd.begin(16,2);
 
-  // Ethernet
-  // SD card
+  // Ethernet & SD card
   //pinMode(10, OUTPUT); // xxx why is this here
-  //Serial.println(F("."));
-  while ( ! Ethernet.begin(mac) )
-  {
-    ;
-  }
-  //Serial.println(F("ETH"));
+  //  while ( ! Ethernet.begin(mac) )
+  //  {
+  //    ;
+  //  }
+  //  Ethernet.begin(mac, ip);  
+  // Read IP address and MAC address from file on SD card
   while ( ! SD.begin(4))
   {
     ;
   }
-  //Serial.println(F("SD"));
+  bool got_eth_info = false;
+  if (SD.exists("/eth.txt"))
+  {
+    File f = SD.open("/eth.txt", FILE_READ);
+    if (f) 
+    {
+      while(f.available())
+      {
+        break;
+      }
+    }
+  }
+  if (!got_eth_info)
+  {
+    // use defaults
+    // xxx 
+  }
   server.begin(); // starts listening for incoming connections
+
+  // EEPROM
+  num_bytes_last_received_serial = EEPROM.read(num_bytes_last_received_serial_start);
+
+  // LED
+  pinMode(A4, OUTPUT);
+  pinMode(7, OUTPUT);
+  pinMode(8, OUTPUT);
+  pinMode(9, OUTPUT);
+
+  digitalWrite(A4, HIGH);
+  digitalWrite(7, HIGH);
+  digitalWrite(8, HIGH);
+  digitalWrite(9, HIGH);
 } 
 
 /****************************************************************/
@@ -148,19 +179,19 @@ void setup()
 // 'file_media_type' should be a media type, e.g. "image/png", "text/html".
 //   http://en.wikipedia.org/wiki/Internet_media_type#Type_image
 //
-boolean send_http_header(unsigned long file_size, String file_media_type)
+boolean send_http_header(const unsigned long & file_size, const String & file_media_type)
 {  
-  server.print( F("HTTP/1.1 200 OK\r\nContent-Type: ") );
+  server.print( "HTTP/1.1 200 OK\r\nContent-Type: " );
   server.print( file_media_type);
-  server.print( F("\r\nContent-length: ") );
+  server.print( "\r\nContent-length: " );
   server.print( file_size ); // xxx make sure I don't need to cast to String
-  server.print( F("\r\n\r\n") );
+  server.print( "\r\n\r\n" );
 }
 
 /****************************************************************/
 // Returns file media type
 
-String get_file_media_type(String file_name)
+String get_file_media_type(const String & file_name)
 {
   //  long index_of = file_name.lastIndexOf(F("."));
   //
@@ -175,7 +206,7 @@ String get_file_media_type(String file_name)
   //  }
   //  else 
   //  {
-  return F("text/html");
+  return "text/html";
   //  }
 }
 
@@ -223,12 +254,7 @@ void serial_listen()
   {      
     // send bytes to sign, one chunk at a time
     if (num_bytes_rec_serial > 0)
-    {
-      Serial.println(num_bytes_rec_serial);
-      Serial.println(num_bytes_sent_serial);
-      Serial.println(num_bytes_last_received);
-      Serial.println("-");
-    
+    {    
       if (num_bytes_sent_serial < num_bytes_rec_serial)
       {
         // There are bytes that have been received and are waiting in EEPROM to be sent.
@@ -264,8 +290,12 @@ void serial_listen()
       }
       else
       {
-        // all received bytes have been sent, so reset
-        num_bytes_last_received = num_bytes_rec_serial;
+        // all received bytes have been sent, so reset 
+        if (eeprom_write_counter < 500) // xxx remove for production
+        {
+          eeprom_write_counter ++;
+          EEPROM.write(num_bytes_last_received_serial_start, num_bytes_sent_serial);
+        }
         num_bytes_rec_serial = 0;
         num_bytes_sent_serial = 0;
       }
@@ -279,14 +309,14 @@ void serial_listen()
 void restore_sign()
 {
   // this just triggers a re-reading of bytes already stored in memory
-  num_bytes_rec_serial = num_bytes_last_received;
+  num_bytes_rec_serial = EEPROM.read(num_bytes_last_received_serial_start);  
   alert_active = false;
 }
 
 /****************************************************************/
 // Purpose:
 //
-void program_sign(String sign_text)
+void program_sign(const String & sign_text)
 {  
   s_sign.write(sign_packet_header, 10);
   s_sign.write(sign_packet_spacer, 1);
@@ -316,6 +346,8 @@ void process_client_piecemeal()
       }
       else
       {
+        Serial.print((char)cur_byte);
+
         // if whitespace
         if (char(cur_byte) == char(' '))
         {
@@ -328,35 +360,52 @@ void process_client_piecemeal()
           case 1: // cur_line_num
             switch (cur_token_num)
             {
-            case 2:
+            case 2:            
               // This token should be the file requested.
+
+              if (token == "/")
+              {
+                token = "/index.htm"; 
+              }
+
               // parse arguments, if any
               index_of = token.indexOf("?");
               if (index_of > -1)
               {
                 // there are arguments
                 // grab just the path+filename
+                // first, char buffer
                 file_path_name_buf = (char*)malloc((index_of * sizeof(char)) + 1);
                 token.toCharArray( file_path_name_buf, index_of + 1 );              
-                file_path_name = token;
+                // second, String
+                file_path_name = token.substring(0, index_of);
+
+                // url decoding
+                decode_url(file_path_name);
+
                 // assume all args are there and in a certain order:
-                //   t
-                //   d
-                //   .
-                //   .
+                //   t   = text
+                //   d   = duration
+                //   m   = method
+                //   c   = color
+                //   ...
+
+                // text ------------------
                 param = (token[index_of + 1]);
                 //if (param == 't')
                 //{
-                // text
                 index_of += 3;
                 index_of2 = token.indexOf('&');
                 sign_text = token.substring(index_of, index_of2);
+                // url decoding
+                decode_url(sign_text);
                 //}
+
+                // duration ---------------
                 index_of = index_of2 + 1;
                 param = (token[index_of]);
                 //if (param == 'd')
                 //{
-                // duration
                 index_of += 2;
                 index_of2 = token.indexOf('&', index_of);
                 if (index_of2 > -1)
@@ -384,6 +433,7 @@ void process_client_piecemeal()
             case 3:
               // protocol version should be followed by CRLF, not (SP)
               // xxx    400 (Bad Request) error
+              fail_request(F("400")); 
               break;
 
             default: // cur_token_num
@@ -410,6 +460,7 @@ void process_client_piecemeal()
             else
             {
               ; // xxx    505  (HTTP Version Not Supported) 
+              fail_request(F("505")); 
             }          
           }
           //          else
@@ -456,7 +507,7 @@ void process_client_piecemeal()
         {
           // existence check attempts exceeded
           // 404   
-          //fail_request(F("404")); // xxx uncomment for production
+          fail_request(F("404")); 
         }
       }
       else
@@ -477,9 +528,7 @@ void process_client_piecemeal()
           else
           {
             // file open attempts exceeded
-            // xxx send http error
-            tcp_reset_send();
-            tcp_disconnect();
+            fail_request(F("couldn't open file")); 
           }
         }
         else
@@ -520,9 +569,38 @@ void process_client_piecemeal()
 }
 
 /****************************************************************/
-void fail_request(String msg)
+// order matters
+void decode_url(String & s)
 {
-  send_http_header(10, F("text/plain")); // xxx This takes roughly 50 bytes program memory
+  decode_url_1(s, "+", ' ', 0);
+  //decode_url_1(s, "%2B", '+', 2);
+  //decode_url_1(s, "%5E", '^', 2);
+  //decode_url_1(s, "%2C", ',', 2);
+  //decode_url_1(s, "%3B", ';', 2);
+  //decode_url_1(s, "%3A", ':', 2);
+  //decode_url_1(s, "%25", '%', 2);
+}
+
+/****************************************************************/
+void decode_url_1(String & s, const String & old, const char & new_, const unsigned short int & extra_count)
+{
+  index_of_decode = sign_text.indexOf(old);
+  while(index_of_decode > -1)
+  {
+    //sign_text.replace("%2B", "+"); // ~800 bytes program memory
+    if (extra_count > 0)
+    {
+      sign_text.remove(index_of_decode, extra_count);
+    }
+    sign_text[index_of_decode] = new_;
+    index_of_decode = sign_text.indexOf(old);
+  }
+}
+
+/****************************************************************/
+void fail_request(const String & msg)
+{
+  send_http_header(10, "text/plain"); // xxx This takes roughly 50 bytes program memory
   server.print(msg); // xxx this takes about 16 bytes program memory
   tcp_reset_send();
   tcp_disconnect();
@@ -572,7 +650,7 @@ void tcp_disconnect()
 //  while (client.available())
 //  {
 //    cur_byte = client.read();
-//    //Serial.write(cur_byte);
+//    //te(cur_byte);
 //
 //    if (char(cur_byte) == char(' '))
 //    {
@@ -725,6 +803,21 @@ void tcp_disconnect()
 //}
 
 /****************************************************************/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -1,9 +1,17 @@
 
-Ethernet
---------
-4	SS		select SD card
 
-10	SS		select w5100 (ethernet)
+
+0	hardware serial
+1	hardware serial
+2	sign serial
+3	sign serial
+4	SS		ethernet select SD card
+5	pc serial
+6	pc serial
+7	
+8
+9
+10	SS		ethernet select w5100
 11	MOSI
 12	MISO
 13	SCK
