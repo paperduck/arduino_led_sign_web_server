@@ -11,9 +11,12 @@
 7	
 8
 9
-10	SS		ethernet select w5100
-11	MOSI
-12	MISO
-13	SCK
+10	SS		ethernet chip select pin - w5100
+11	MOSI		SPI bus
+12	MISO		SPI bus
+13	SCK		SPI bus
 
 
+http://arduino.cc/en/Reference/SDbegin
+Note that even if you use a different chip select pin, the hardware SS pin 
+must be kept as an output or the SD library functions will not work. 

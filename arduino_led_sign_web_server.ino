@@ -40,6 +40,7 @@ Notes:
 //  0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
 //byte ip[] = {
 //  192, 168, 1, 203};
+
 EthernetServer server = EthernetServer(80);
 EthernetClient client = EthernetClient();
 
@@ -48,6 +49,7 @@ bool                       header_needs_to_be_sent = true;
 bool                       tcp_do_send = false;
 
 // SD card -----------------------------------
+const byte                 sd_pin = 4;
 File                       f; // file to read from SD card
 bool                       file_exists = false;
 bool                       file_open = false;
@@ -121,6 +123,22 @@ const byte                 sign_packet_tail[] = {
 /****************************************************************/
 void setup()
 {
+  // LED
+  pinMode(A4, OUTPUT);
+  pinMode(7, OUTPUT);
+  pinMode(8, OUTPUT);
+  pinMode(9, OUTPUT);
+  //
+  digitalWrite(A4, HIGH);
+  digitalWrite(7, HIGH);
+  digitalWrite(8, HIGH);
+  digitalWrite(9, HIGH);
+  delay(100);
+  digitalWrite(A4, LOW);
+  digitalWrite(7, LOW);
+  digitalWrite(8, LOW);
+  digitalWrite(9, LOW);
+
   Serial.begin(9600); // ~300 bytes program space memory. 
   s_sign.begin(2400); // !!! the order that these serials are begun seems to matter !!!
   s_pc.begin(2400); // !!! the order that these serials are begun seems to matter !!!
@@ -136,43 +154,77 @@ void setup()
   //  }
   //  Ethernet.begin(mac, ip);  
   // Read IP address and MAC address from file on SD card
-  while ( ! SD.begin(4))
-  {
-    ;
-  }
-  bool got_eth_info = false;
+  //  while ( ! SD.begin(sd_pin))
+  //  {
+  //    ;
+  //  }
+  byte           mac[6];
+  byte           ip[4];
+  String         eth_tmp = "";
+  byte           char_counter = 0;
+  bool           got_mac = false;
+  bool           got_eth = false;
+  //
+  digitalWrite(A4, HIGH);
+  SD.begin(sd_pin);
   if (SD.exists("/eth.txt"))
   {
-    File f = SD.open("/eth.txt", FILE_READ);
+    f = SD.open("/eth.txt", FILE_READ);
     if (f) 
     {
+      // read in mac (line 1)
+      char_counter = 0;
       while(f.available())
       {
-        break;
+        cur_byte = f.read();
+        if (cur_byte == '\n' && cur_byte == '\r')
+        {
+          break;
+        }
+        else
+        {
+          eth_tmp += (String)(char)cur_byte;
+          char_index ++;
+          if (char_index > 100)
+          {
+            Serial.println("mac (line 1) too long"); 
+          }
+        }
+      }
+      // parse mac
+
+      // read in IP (line 2)
+      char_counter = 0;
+      while(f.available())
+      {
+        // If blank line, then use auto-ip
+
+      }
+      // parse ip
+      ;
+
+      if (!got_mac)
+      {
+        Serial.println("didn't get mac");
+      }
+      if (!got_ip)
+      {
+        Serial.println("didn't get ip"); 
       }
     }
+    else
+    {
+      Serial.println("f.available() = false");
+    }
   }
-  if (!got_eth_info)
-  {
-    // use defaults
-    // xxx 
-  }
+  digitalWrite(A4, LOW);
+  f.close();
   server.begin(); // starts listening for incoming connections
 
   // EEPROM
   num_bytes_last_received_serial = EEPROM.read(num_bytes_last_received_serial_start);
 
-  // LED
-  pinMode(A4, OUTPUT);
-  pinMode(7, OUTPUT);
-  pinMode(8, OUTPUT);
-  pinMode(9, OUTPUT);
-
-  digitalWrite(A4, HIGH);
-  digitalWrite(7, HIGH);
-  digitalWrite(8, HIGH);
-  digitalWrite(9, HIGH);
-} 
+}
 
 /****************************************************************/
 // multiline uses same SRAM as inline concatenation
@@ -502,6 +554,11 @@ void process_client_piecemeal()
           {
             file_exists = true;
           }
+          else
+          {
+            // maybe SD card needs to be restarted
+            SD.begin(sd_pin);
+          }
         }
         else
         {
@@ -803,6 +860,38 @@ void tcp_disconnect()
 //}
 
 /****************************************************************/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

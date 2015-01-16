@@ -1,10 +1,8 @@
-# web images
-www/img/*
+#images
+sd_card/img/*
 
 # notes
 #notes/*
 
 # temp files
 *~
-
-backups/*
