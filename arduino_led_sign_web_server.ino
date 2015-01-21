@@ -54,9 +54,12 @@ const byte                 sd_pin = 4;
 File                       f; // file to read from SD card
 bool                       file_exists = false;
 bool                       file_open = false;
-char *                     ethernet_file = "eth.txt";
+char *                     sd_ethernet_file = "/ETH.TXT";
 //const char *               old_sign_packet_file = "/tmp/oldpacket";
-char *                     new_sign_text_file = "/tmp/newtext";
+char *                     sd_alert_text_file = "/TMP/ALERT.TXT";
+// this is the entire sign packet, not just the message text:
+char *                     sd_normal_sign_file = "/TMP/NORMAL.TXT"; 
+char *                     sd_temp_folder = "/TMP/";
 
 // Serial -----------------------------------
 SoftwareSerial             serial_sign(2,3);
@@ -84,6 +87,7 @@ boolean                    start_new_token = true;
 short int                  index_of; // stores result of String.indexOf(). Must be signed to hold -1.
 short int                  index_of2; // for String.substring()
 short int                  index_of_decode;
+bool                       in_request_alert_text = false;
 
 // File stuff -----------------------------------
 String                     file_media_type; // a.k.a. MIME type, a.k.a. Content-type
@@ -150,9 +154,9 @@ void setup()
   // Initialize SD card
   SD.begin(sd_pin);
   // make /tmp/ directory if it doesn't already exist
-  if (! SD.exists("/tmp/") )
+  if (! SD.exists(sd_temp_folder) )
   {
-    SD.mkdir("/tmp/");
+    SD.mkdir(sd_temp_folder);
   }
 
   // Initialize ethernet connection
@@ -165,12 +169,9 @@ void setup()
   //
   //  digitalWrite(A4, HIGH);
   //  digitalWrite(7, HIGH);
-
-  // make /tmp/ directory on SD card
-
-  if (SD.exists( "/eth.txt" ))
+  if (SD.exists( sd_ethernet_file ))
   {
-    f = SD.open( "/eth.txt", FILE_READ);
+    f = SD.open( sd_ethernet_file, FILE_READ);
     if (f) 
     {
       // read in mac (line 1)  -----------------------------
@@ -269,20 +270,20 @@ void setup()
       {
         //        Serial.println("didn't get mac");
       }
+      f.close();
     }
     else
     {
-      //      Serial.println("file is empty");
+      //      Serial.println("couldn't open file");
     }
   }
-  f.close();
   server.begin(); // starts listening for incoming connections
 
   // EEPROM
   num_bytes_last_received_serial = EEPROM.read(num_bytes_last_received_serial_start);
 
   // auto-reset sign
-  reset_sign();
+  reset_sign_sd();
 
 }
 
@@ -449,13 +450,42 @@ void loop()
     client = server.available(); 
   }
 
-  serial_listen();
+  serial_listen_sd();
 
   if (alert_active)
   {
     if ( (millis() - time_of_last_program_ms) > (duration_seconds * 1000) )
     {
-      reset_sign();
+      reset_sign_sd();
+    }
+  }
+}
+
+/****************************************************************/
+void serial_listen_sd()
+{  
+  if (serial_pc.available())
+  {
+    // make sure file object is not in use
+    if (!f)
+    {
+      if (SD.exists(sd_normal_sign_file))
+      {
+        SD.remove(sd_normal_sign_file);
+      }
+      f = SD.open(sd_normal_sign_file, FILE_WRITE);
+      if (f)
+      {
+        while ( serial_pc.available() )
+        {
+          f.print( serial_pc.read() );
+        }
+        f.close();
+      }
+      else
+      {
+        Serial.println("serial_listen_sd() couldn't open file"); 
+      }
     }
   }
 }
@@ -537,7 +567,7 @@ void reset_sign()
 // Program sign to the message that was set using manufacturer's software.
 void reset_sign_sd()
 {
-  // xxx use this function instead?
+  program_sign_sd(sd_normal_sign_file);
 }
 
 /****************************************************************/
@@ -560,13 +590,11 @@ void program_sign(const String & sign_text)
 /****************************************************************/
 // Purpose:
 //
-void program_sign_sd()
-{
-  f = SD.open(new_sign_text_file, FILE_WRITE);
-  Serial.println(new_sign_text_file);
+void program_sign_sd(const char * fname)
+{  
+  f = SD.open(fname, FILE_READ);
   if (f)
-  {  
-    Serial.println("new sign text file - OPEN");
+  {        
     serial_sign.write(sign_packet_header, 10);
     serial_sign.write(sign_packet_spacer, 1);
     serial_sign.write(sign_packet_color, 1);
@@ -574,20 +602,17 @@ void program_sign_sd()
     serial_sign.write(sing_packet_font, 1);      
     while(f.available())
     {
-      //serial_sign.write(f.read());
-      //Serial.print(f.read());
-      Serial.println( "k" );
+      serial_sign.write(f.read());
     }    
     serial_sign.write(sign_packet_tail, 3);
-
+    f.close();
     time_of_last_program_ms = millis();
     alert_active = true;
-    f.close();
   }
   else
   {
-    Serial.println("not opened"); 
-    Serial.println(new_sign_text_file); 
+    // xxx error
+    Serial.println("prog sd failed");
   }
 }
 
@@ -607,8 +632,6 @@ void process_client_piecemeal()
       }
       else
       {
-        //        Serial.print((char)cur_byte);
-
         // if whitespace
         if (char(cur_byte) == char(' '))
         {
@@ -622,10 +645,14 @@ void process_client_piecemeal()
             switch (cur_token_num)
             {
             case 2:            
+              Serial.println("token:");
+              Serial.println(token);
+
               // This token should be the file requested.
               if (token == "/")
               {
                 token = F("/index.htm"); 
+                break;
               }
 
               // parse arguments, if any
@@ -662,21 +689,20 @@ void process_client_piecemeal()
                 }
                 //sign_text = token.substring(index_of, index_of2);
                 // write sign text to SD
-                if (SD.exists(new_sign_text_file))
-                {
-                  SD.remove(new_sign_text_file); 
-                }
-                f = SD.open(new_sign_text_file, FILE_WRITE);
-                if (f)
-                {
-                  Serial.println(token.substring(index_of, index_of2));
-                  Serial.println( f.print( token.substring(index_of, index_of2) ) );
-                }      
-                else
-                {
-                  Serial.println("couldn't open file to write t"); 
-                }
-                f.close();          
+                //  //  //                if (SD.exists(sd_alert_text_file))
+                //  //  //                {
+                //  //  //                  SD.remove(sd_alert_text_file); 
+                //  //  //                }                
+                //  //  //                f = SD.open(sd_alert_text_file, FILE_WRITE);
+                //  //  //                if (f)
+                //  //  //                {
+                //  //  //                  f.print( token.substring(index_of, index_of2) );
+                //  //  //                }      
+                //  //  //                else
+                //  //  //                {
+                //  //  //                  Serial.println("SD.open() failed while loading token into alert-text file"); 
+                //  //  //                }
+                //  //  //                f.close();   
 
                 // url decoding
                 //decode_url(sign_text);
@@ -701,10 +727,11 @@ void process_client_piecemeal()
                 }
                 //}
                 //program_sign(sign_text);
-                program_sign_sd();
+                program_sign_sd(sd_alert_text_file);
               }
               else
               {
+                Serial.println("no args");
                 // no arguments 
                 file_path_name_buf = (char*)malloc((token.length() * sizeof(char)) + 1);
                 token.toCharArray( file_path_name_buf, token.length() + 1 );              
@@ -758,15 +785,76 @@ void process_client_piecemeal()
         }
         else
         {
-          // non-whitespace, so append to token
-          if (start_new_token)
+          // non-whitespace
+          if (cur_line_num == 1 && cur_token_num == 2)
           {
-            // starting a new token
-            cur_token_num++;
-            token = "";
-            start_new_token = false;
+            // If the alert text is an argument here, then write it directly to the SD card
+            //   instead of saving it to a token.
+            if (in_request_alert_text)
+            {
+              // write to SD card
+              if (SD.exists(sd_alert_text_file))
+              {
+                SD.remove(sd_alert_text_file); 
+              }   
+              f = SD.open(sd_alert_text_file, FILE_WRITE);
+              if (f)
+              {
+                while ( cur_byte != 0xFF )
+                {
+                  f.print( char(cur_byte) );
+                  cur_byte = client.read();  
+                  if ( char(cur_byte) == char('&') )
+                  {
+                    // end of alert text
+                    in_request_alert_text = false;
+                    break;
+                  }                 
+                }
+                f.close();
+              }
+              else
+              {
+                Serial.println("SD.open failed 1"); 
+              }
+            }
+            else
+            {
+              if ( char(cur_byte) == char('?') )
+              {
+                // assume first parameter is: "t="
+                cur_byte = client.read();
+                cur_byte = client.read();
+                // beginning of alert text
+                in_request_alert_text = true;   
+                token += "?t=yyy&";             
+              } 
+              else
+              {
+                // non-whitespace, so append to token
+                if (start_new_token)
+                {
+                  // starting a new token
+                  cur_token_num++;
+                  token = "";
+                  start_new_token = false;
+                }
+                token += char(cur_byte);
+              }
+            }
           }
-          token += char(cur_byte);
+          else
+          {
+            // non-whitespace, so append to token
+            if (start_new_token)
+            {
+              // starting a new token
+              cur_token_num++;
+              token = "";
+              start_new_token = false;
+            }
+            token += char(cur_byte);
+          }          
         }
       }   
     }
@@ -1086,94 +1174,6 @@ void tcp_disconnect()
 //}
 
 /****************************************************************/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
