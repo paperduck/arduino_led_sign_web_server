@@ -1,28 +1,19 @@
 90-A2-DA-0F-96-BE
-
-144
-162
-218
-15
-150
-190
-
 010.010.151.129
 
 
+Instructions:
+
 line 1:
 	> mac address in this format: 90-A2-DA-0F-96-BE
-	> EXACTLY TWO hex digits in each part.
-	> Dashes REQUIRED between parts.
+	> Each part MUST be exactly two hex digits.
+	> Dashes MUST exist between parts.
 	> Capital letters ONLY. NO lowercase letters.
 line 2:
-	> Blank line will trigger auto-IP assignment
-	> OR put an ip address in this format: 10.10.151.129
-	> If writing an IP address, one to three digits per part is okay.
+	> Blank line will trigger dynamic IP assignment
+	> OR put an ip address in this format: xxx.xxx.xxx.xxx
+	> Each part of IP address MUST be exactly 3 digits.
+	> IP address MUST include periods.
 line 3:
-	> This can have anything, but it needs to exist. Whitespace is okay.
-
-
-If line 2 is blank (no whitespace either), an attempt will
-be made to get a dynamic ip.
+	> This can have anything, but it MUST exist. Whitespace is okay.
 

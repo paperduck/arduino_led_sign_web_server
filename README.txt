@@ -2,6 +2,11 @@
 PROJECT NAME
 ---------------
 arduino_led_sign_web_server
+
+---------------
+STATUS
+---------------
+In-progress
  
 ---------------
 BRIEF DESCRIPTION
@@ -12,11 +17,6 @@ Simple web server for Arduino Uno. This particular server is custom-built to com
 CREATED:
 ---------------
 2014-11-??
-
----------------
-STATUS
----------------
-In-progress
 
 ---------------
 Technical Specifications:

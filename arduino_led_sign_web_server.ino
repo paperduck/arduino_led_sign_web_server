@@ -14,6 +14,7 @@ LED Adapter
  - xxx restore alert (including countown) if power goes out
  - xxx check for unused variables
  - xxx don't store entire sign text in SRAM, go straight to/from SD or EEPROM
+ - xxx use less global functions to save SRAM
  */
 
 /*
@@ -37,112 +38,84 @@ Notes:
 //LiquidCrystal lcd(A5, A4, A3, A2, A1, A0); // (rs, enable, d4, d5, d6, d7) 
 
 // Ethernet -----------------------------------
-//byte mac[] = {
-//  0x90, 0xA2, 0xDA, 0x0F, 0x96, 0xBE};
-//byte ip[] = {
-//  192, 168, 1, 203};
-
 EthernetServer server = EthernetServer(80);
 EthernetClient client = EthernetClient();
 
 // TCP communication -----------------------------------
 bool                       header_needs_to_be_sent = true;
 bool                       tcp_do_send = false;
+String                     file_media_type; // a.k.a. MIME type, a.k.a. Content-type
 
 // SD card -----------------------------------
 const byte                 sd_pin = 4;
 File                       f; // file to read from SD card
 bool                       file_exists = false;
 bool                       file_open = false;
-char *                     sd_ethernet_file = "/ETH.TXT";
+char *                     sd_ethernet_file = "ETH.TXT";
 //const char *               old_sign_packet_file = "/tmp/oldpacket";
-char *                     sd_alert_text_file = "/TMP/ALERT.TXT";
+char *                     sd_alert_text_file = "TMP/ALERT";
 // this is the entire sign packet, not just the message text:
-char *                     sd_normal_sign_file = "/TMP/NORMAL.TXT"; 
-char *                     sd_temp_folder = "/TMP/";
+char *                     sd_normal_sign_file = "TMP/NORMAL"; 
+char *                     sd_temp_folder = "TMP/";
 
 // Serial -----------------------------------
 SoftwareSerial             serial_sign(2,3);
 SoftwareSerial             serial_pc(5,6);   // pin 4 used for ethernet shield's SD card slave select 
-const byte                 chunk_size = 3;
-byte                       sign_buffer[chunk_size]; 
-byte                       num_bytes_sent_serial = 0; // counter for num bytes sent
-byte                       num_bytes_rec_serial = 0;  // counter for num bytes received
+unsigned short int         num_bytes_sent_serial = 0; // counter for num bytes sent
+unsigned short int         num_bytes_rec_serial = 0;  // counter for num bytes received
 byte                       serial_incoming_outgoing_delay = 1000;
 unsigned long              time_of_last_incoming_serial = 0;
-byte                       num_bytes_last_received_serial = 0;
-
-// diagnostic/debugging -----------------------------------
-//short                      memory_available = 0;
-//short                      memory_available_min = 9999;
+//byte                       num_bytes_last_received_serial = 0;
 
 // Parsing, Flags, State -----------------------------------
-byte                       cur_byte;
 String                     token = "";
 byte                       cur_line_num = 1;   // 1-based. 0 means no lines yet. (lines of incoming header)
 byte                       cur_token_num = 0;  // 1-based. e.g. GET will have token index 1, Filename 2, HTTP version 3.
 String                     file_path_name = ""; // file requested + args
 char *                     file_path_name_buf; // char* for passing into SD.exists(), SD.open()
-boolean                    start_new_token = true;
+bool                       start_new_token = true;
 short int                  index_of; // stores result of String.indexOf(). Must be signed to hold -1.
 short int                  index_of2; // for String.substring()
 short int                  index_of_decode;
 bool                       in_request_alert_text = false;
 
-// File stuff -----------------------------------
-String                     file_media_type; // a.k.a. MIME type, a.k.a. Content-type
-
 // EEPROM - 1024 bytes -----------------------------------
-const byte                 num_bytes_last_received_serial_start = 0;
-const byte                 sign_buffer_start = 1;
-unsigned short int         eeprom_write_counter = 0; // xxx comment out for production
+unsigned short int         eeprom_serial_buffer_start = 0;
 
 // alert settings -----------------------------------
 char                       param; // holds parameter name
 //String                     sign_text = ""; // param: t
-
-
 unsigned long              duration_seconds = 1; // param: d
 //byte                       method = 0; // param: m
 //byte                       color = 0; // param=c
-unsigned long              time_of_last_program_ms = millis(); // xxx change this to accomdate power outage (use EEPROM)
+unsigned long              time_of_last_alert_ms = millis(); // xxx change this to accomdate power outage (use EEPROM)
 bool                       alert_active = false;
 
-// sign values -----------------------------------
+// sign value constants -----------------------------------
 //const byte                 color_red[1]       = {0xB0};
 //const byte                 color_bright_red   = {0xB1};
 //const byte                 color_orange       = {0xB2};
 const byte                 sign_packet_header[10] = {
-  0x00, 0xFF, 0xFF, 0x00, 0x0B, 0x01, 0xFF, 0x01, 0x30, 0x31};
+  0x00, 0xFF, 0xFF, 0x00, 0x0B, 0x01, 0xFF, 0x01, 0x30, 0x31  };
 const byte                 sign_packet_spacer[] = {
-  0xEF};
+  0xEF  };
 const byte                 sign_packet_color[] = {
-  0xB0};
+  0xB0  };
 const byte                 sign_packet_method[] = {
-  0x13};
+  0x13  };
 const byte                 sing_packet_font[] = {
-  0xA2};
+  0xA2  };
 const byte                 sign_packet_tail[] = {
-  0xFF, 0xFF, 0x00};
+  0xFF, 0xFF, 0x00  };
 
 /****************************************************************/
 void setup()
 {
-  // LED
-  pinMode(A4, OUTPUT);
-  pinMode(7, OUTPUT);
-  pinMode(8, OUTPUT);
-  pinMode(9, OUTPUT);
-
-  digitalWrite(A4, HIGH);
-  digitalWrite(7, HIGH);
-  digitalWrite(8, HIGH);
-  //  digitalWrite(9, HIGH);
-  //  delay(100);
-  //  digitalWrite(A4, LOW);
-  //  digitalWrite(7, LOW);
-  //  digitalWrite(8, LOW);
-  //  digitalWrite(9, LOW);
+  //  // LED
+  //  pinMode(A4, OUTPUT);
+  //  pinMode(7, OUTPUT);
+  //  pinMode(8, OUTPUT);
+  //  pinMode(9, OUTPUT);
 
   Serial.begin(9600); // ~300 bytes program space memory. 
   serial_sign.begin(2400); // !!! the order that these serials are begun seems to matter !!!
@@ -152,12 +125,7 @@ void setup()
   //  lcd.begin(16,2);
 
   // Initialize SD card
-  SD.begin(sd_pin);
-  // make /tmp/ directory if it doesn't already exist
-  if (! SD.exists(sd_temp_folder) )
-  {
-    SD.mkdir(sd_temp_folder);
-  }
+  sd_init();
 
   // Initialize ethernet connection
   byte           mac[6];
@@ -165,10 +133,8 @@ void setup()
   String         eth_tmp = ""; // line
   bool           got_mac = false;
   bool           got_ip = false;
-  //  bool           line_2_blank = false;
-  //
-  //  digitalWrite(A4, HIGH);
-  //  digitalWrite(7, HIGH);
+  byte           b;
+
   if (SD.exists( sd_ethernet_file ))
   {
     f = SD.open( sd_ethernet_file, FILE_READ);
@@ -178,14 +144,14 @@ void setup()
       index_of = 0;
       while(f.available())
       {
-        cur_byte = f.read();
-        if (cur_byte == '\n')
+        b = f.read();
+        if (b == '\n')
         {
           break;
         }
         else
         {
-          eth_tmp += (String)(char)cur_byte;
+          eth_tmp += (String)(char)b;
           index_of ++;
           //          if (index_of > 20)
           //          {
@@ -203,25 +169,19 @@ void setup()
       }
       got_mac = true;
 
-      //      Serial.println("mac: ");
-      //      for (byte m = 0; m < 6; m++)
-      //      {
-      //        Serial.println( mac[m] );
-      //      }
-
       // check for IP (line 2)  -----------------------------
       index_of = 0;
       eth_tmp = "";
       while(f.available())
       {
-        cur_byte = f.read();
-        if (cur_byte == '\n')
+        b = f.read();
+        if (b == '\n')
         {
           break;
         }
         else
         {
-          eth_tmp += (String)(char)cur_byte;
+          eth_tmp += (String)(char)b;
           index_of ++;
           //          if (index_of > 20)
           //          {
@@ -238,27 +198,18 @@ void setup()
         index_of += 4;
       }
       got_ip = true;
-
-      //      Serial.println("ip: ");
-      //      for (byte i = 0; i < 4; i++)
-      //      {
-      //        Serial.println( ip[i] );
-      //      }
-
       if (got_mac)
       {
-        digitalWrite(A4, LOW); 
         if (got_ip)
         {
           Ethernet.begin(mac, ip);  
-          digitalWrite(7, LOW);
         }
         else
         {
           //          Serial.println("attempting auto ip");
           if ( 0/*xxx Ethernet.begin(mac) */ ) // 4060 bytes program memory
           {
-            digitalWrite(8, LOW);
+            ;
           }
           else
           {
@@ -279,12 +230,22 @@ void setup()
   }
   server.begin(); // starts listening for incoming connections
 
-  // EEPROM
-  num_bytes_last_received_serial = EEPROM.read(num_bytes_last_received_serial_start);
+  //  //  // EEPROM
+  //  //  num_bytes_last_received_serial = EEPROM.read(num_bytes_last_received_serial_start);
 
   // auto-reset sign
   reset_sign_sd();
+}
 
+/****************************************************************/
+void sd_init()
+{
+  SD.begin(sd_pin);
+  // make /tmp/ directory if it doesn't already exist
+  if (! SD.exists(sd_temp_folder) )
+  {
+    SD.mkdir(sd_temp_folder);
+  }
 }
 
 /****************************************************************/
@@ -405,13 +366,13 @@ byte hex_to_byte( const String & s )
 // 'file_media_type' should be a media type, e.g. "image/png", "text/html".
 //   http://en.wikipedia.org/wiki/Internet_media_type#Type_image
 //
-boolean send_http_header(const unsigned long & file_size, const String & file_media_type)
+bool send_http_header(const unsigned long & file_size, const String & file_media_type)
 {  
-  server.print( F("HTTP/1.1 200 OK\r\nContent-Type: ") );
+  server.print( "HTTP/1.1 200 OK\r\nContent-Type: ");
   server.print( file_media_type);
-  server.print( F("\r\nContent-length: ") );
+  server.print( "\r\nContent-length: " );
   server.print( file_size ); // xxx make sure I don't need to cast to String
-  server.print( F("\r\n\r\n") );
+  server.print( "\r\n\r\n");
 }
 
 /****************************************************************/
@@ -432,7 +393,7 @@ String get_file_media_type(const String & file_name)
   //  }
   //  else 
   //  {
-  return F("text/html");
+  return "text/html";
   //  }
 }
 
@@ -454,186 +415,190 @@ void loop()
 
   if (alert_active)
   {
-    if ( (millis() - time_of_last_program_ms) > (duration_seconds * 1000) )
+    if ( (millis() - time_of_last_alert_ms) > (duration_seconds * 1000) )
     {
       reset_sign_sd();
     }
   }
 }
 
-/****************************************************************/
-void serial_listen_sd()
-{  
-  if (serial_pc.available())
-  {
-    // make sure file object is not in use
-    if (!f)
-    {
-      if (SD.exists(sd_normal_sign_file))
-      {
-        SD.remove(sd_normal_sign_file);
-      }
-      f = SD.open(sd_normal_sign_file, FILE_WRITE);
-      if (f)
-      {
-        while ( serial_pc.available() )
-        {
-          f.print( serial_pc.read() );
-        }
-        f.close();
-      }
-      else
-      {
-        Serial.println("serial_listen_sd() couldn't open file"); 
-      }
-    }
-  }
-}
-
-/****************************************************************/
-void serial_listen()
-{
-  // listen for incoming serial communication
-  if (serial_pc.available())
-  { 
-    // read a byte into EEPROM
-    EEPROM.write(sign_buffer_start + num_bytes_rec_serial, serial_pc.read() );
-    //    eeprom_write_counter++;
-    num_bytes_rec_serial ++;
-    time_of_last_incoming_serial = millis();
-  }
-  else
-  {      
-    // send bytes to sign, one chunk at a time
-    if (num_bytes_rec_serial > 0)
-    {    
-      if (num_bytes_sent_serial < num_bytes_rec_serial)
-      {
-        // There are bytes that have been received and are waiting in EEPROM to be sent.
-        // There is a delay here to allow time for bytes to arrive from PC.
-        //   Sending will reset prematurely if bytes are sent too quickly, which would
-        //   result in garbage being sent to sign.
-        if ( (millis() - time_of_last_incoming_serial) > serial_incoming_outgoing_delay )
-        {
-          // check if "chunk-size" bytes should be sent, or the lesser remainder bytes. 
-          if (chunk_size < (num_bytes_rec_serial - num_bytes_sent_serial) )
-          {
-            // load "chunk-size" bytes from EEPROM into SRAM
-            for (byte i = 0; i < chunk_size; i++)
-            {
-              sign_buffer[i] = EEPROM.read(sign_buffer_start + num_bytes_sent_serial + i);
-              //Serial.print( String(" ") + String( sign_buffer[i], HEX ) ); 
-            }
-            // send chunk
-            num_bytes_sent_serial += ( serial_sign.write( sign_buffer, chunk_size) ); 
-          }
-          else
-          {        
-            // load remaining bytes from EEPROM into SRAM
-            for (byte i = 0; i < (num_bytes_rec_serial - num_bytes_sent_serial); i++)
-            {
-              sign_buffer[i] = EEPROM.read(sign_buffer_start + num_bytes_sent_serial + i);
-              //Serial.print( String(" ") + String( sign_buffer[i], HEX ) ); 
-            }
-            // send chunk
-            num_bytes_sent_serial += ( serial_sign.write( sign_buffer, (num_bytes_rec_serial - num_bytes_sent_serial)) ); 
-          }
-        }
-      }
-      else
-      {
-        // all received bytes have been sent, so reset 
-        //        eeprom_write_counter ++;
-        EEPROM.write(num_bytes_last_received_serial_start, num_bytes_sent_serial);
-        num_bytes_rec_serial = 0;
-        num_bytes_sent_serial = 0;
-      }
-    }
-  }  
-}
 
 /****************************************************************/
 // Purpose:
-// Program sign to the message that was set using manufacturer's software.
-void reset_sign()
-{
-  // this just triggers a re-reading of bytes already stored in memory
-  num_bytes_rec_serial = EEPROM.read(num_bytes_last_received_serial_start);  
-  alert_active = false;
+//   Check for incoming bytes on serial from PC.
+//   If bytes are incoming, then save them to the SD card.
+//   Also send the same bytes to sign.
+// 
+// Remarks:
+//   Writing to SD file as the bytes are incoming seems to create too much
+//   of a delay. The serial transmission ends prematurely.
+//   Therefore a fast, temporary buffer may be required.
+//
+void serial_listen_sd()
+{    
+  byte b;
+  if (serial_pc.available())
+  { 
+    time_of_last_incoming_serial = millis();
+    b = serial_pc.read();
+    EEPROM.write( eeprom_serial_buffer_start + num_bytes_rec_serial, b );
+    num_bytes_rec_serial ++;
+  }
+  else
+  {
+    if (millis() - time_of_last_incoming_serial > serial_incoming_outgoing_delay)
+    {
+      if (num_bytes_sent_serial < num_bytes_rec_serial)
+      {
+        // Time has passed since last byte was received from serial, so send bytes out from temporary buffer.
+        // Send bytes to sign.
+        while (num_bytes_sent_serial < num_bytes_rec_serial)
+        {
+          serial_sign.write( EEPROM.read(eeprom_serial_buffer_start + num_bytes_sent_serial) );
+          num_bytes_sent_serial ++;
+        }
+        // Record bytes to SD card. 
+
+        // remove file if it exists
+        sd_remove(sd_normal_sign_file);
+        // open file for writing
+        f = SD.open(sd_normal_sign_file, FILE_WRITE);
+        if (f)
+        {
+          num_bytes_sent_serial = 0;
+          while (num_bytes_sent_serial < num_bytes_rec_serial) 
+          {
+            f.write( EEPROM.read( eeprom_serial_buffer_start + num_bytes_sent_serial ) );
+            num_bytes_sent_serial ++;
+          }
+          f.close();   
+        }
+        else
+        {
+          //Serial.print("E1"); 
+        }
+        // reset
+        num_bytes_sent_serial = 0;
+        num_bytes_rec_serial = 0;
+      }
+    } 
+  }
+  return;
+
+  // // this doesn't work, maybe writing to SD is too slow and trips up serial transmission.
+  //  byte b;
+  //  if (serial_pc.available())
+  //  {
+  //    // remove file if it exists
+  //    if (SD.exists(sd_normal_sign_file))
+  //    {
+  //      SD.remove(sd_normal_sign_file);
+  //    }
+  //    f = SD.open(sd_normal_sign_file, FILE_WRITE);
+  //    if (f)
+  //    {
+  //      while (serial_pc.available())
+  //      {
+  //        f.write( serial_pc.read() );
+  //      }
+  //      f.close();
+  //      program_sign_nowrap_sd(sd_normal_sign_file, false);
+  //    }
+  //    else
+  //    {
+  //      //Serial.println("E2"); 
+  //    }
+  //  }
+
+
 }
+
+/****************************************************************/
+void sd_remove(char * f)
+{
+  if (SD.exists(f))
+  {
+    SD.remove(f);
+  }
+}
+
+/****************************************************************/
+//// Purpose:
+//// Program sign to the message that was set using manufacturer's software.
+//void reset_sign()
+//{
+//  // this just triggers a re-reading of bytes already stored in memory
+//  num_bytes_rec_serial = EEPROM.read(num_bytes_last_received_serial_start);  
+//  alert_active = false;
+//}
 
 /****************************************************************/
 // Purpose:
 // Program sign to the message that was set using manufacturer's software.
 void reset_sign_sd()
-{
-  program_sign_sd(sd_normal_sign_file);
+{  
+  program_sign_sd(sd_normal_sign_file, false, false);
+  alert_active = false;
 }
 
 /****************************************************************/
 // Purpose:
-//
-void program_sign(const String & sign_text)
-{  
-  serial_sign.write(sign_packet_header, 10);
-  serial_sign.write(sign_packet_spacer, 1);
-  serial_sign.write(sign_packet_color, 1);
-  serial_sign.write(sign_packet_spacer, 1);
-  serial_sign.write(sing_packet_font, 1);  
-  serial_sign.print(sign_text);  
-  serial_sign.write(sign_packet_tail, 3);
-
-  time_of_last_program_ms = millis();
-  alert_active = true;
-}
-
-/****************************************************************/
-// Purpose:
-//
-void program_sign_sd(const char * fname)
-{  
+//  Program sign using whatever file is passed in
+void program_sign_sd(char * fname, bool is_alert, bool do_wrap)
+{   
   f = SD.open(fname, FILE_READ);
   if (f)
-  {        
-    serial_sign.write(sign_packet_header, 10);
-    serial_sign.write(sign_packet_spacer, 1);
-    serial_sign.write(sign_packet_color, 1);
-    serial_sign.write(sign_packet_spacer, 1);
-    serial_sign.write(sing_packet_font, 1);      
+  {    
+    if (do_wrap)
+    {
+      serial_sign.write(sign_packet_header, 10);
+      serial_sign.write(sign_packet_spacer, 1);
+      serial_sign.write(sign_packet_color, 1);
+      serial_sign.write(sign_packet_spacer, 1);
+      serial_sign.write(sing_packet_font, 1);   
+    }
     while(f.available())
     {
       serial_sign.write(f.read());
     }    
-    serial_sign.write(sign_packet_tail, 3);
+    if (do_wrap)
+    {
+      serial_sign.write(sign_packet_tail, 3);
+    }
     f.close();
-    time_of_last_program_ms = millis();
-    alert_active = true;
+    if (is_alert)
+    {
+      time_of_last_alert_ms = millis();
+      alert_active = true;
+    }
   }
   else
   {
-    // xxx error
-    Serial.println("prog sd failed");
+    // xxx error 
   }
 }
 
 /****************************************************************/
 void process_client_piecemeal()
 { 
+  byte b;
+  String url_symbol_buf = "";
+
   if (client)
   {
     if (!tcp_do_send)
     {
       // receive data from client.    
-      cur_byte = client.read();
+      b = client.read();
 
-      if (cur_byte == 0xFF) // 0xFF == EOF == -1 as char
+      if (b == 0xFF) // 0xFF == EOF == -1 as char
       {
         tcp_reset_receive();
       }
       else
       {
         // if whitespace
-        if (char(cur_byte) == char(' '))
+        if (char(b) == char(' '))
         {
           start_new_token = true;
           //token.toLowerCase(); // 64 bytes of program space memory
@@ -645,13 +610,10 @@ void process_client_piecemeal()
             switch (cur_token_num)
             {
             case 2:            
-              Serial.println("token:");
-              Serial.println(token);
-
               // This token should be the file requested.
               if (token == "/")
               {
-                token = F("/index.htm"); 
+                token = "/index.htm"; 
                 break;
               }
 
@@ -726,12 +688,11 @@ void process_client_piecemeal()
                   //duration_seconds = 1;
                 }
                 //}
-                //program_sign(sign_text);
-                program_sign_sd(sd_alert_text_file);
+                // send this new alert to the sign
+                program_sign_sd(sd_alert_text_file, true, true);
               }
               else
               {
-                Serial.println("no args");
                 // no arguments 
                 file_path_name_buf = (char*)malloc((token.length() * sizeof(char)) + 1);
                 token.toCharArray( file_path_name_buf, token.length() + 1 );              
@@ -742,7 +703,7 @@ void process_client_piecemeal()
             case 3:
               // protocol version should be followed by CRLF, not (SP)
               // 400 (Bad Request) error
-              fail_request(F("400")); 
+              fail_request("400"); 
               break;
 
             default: // cur_token_num
@@ -755,12 +716,12 @@ void process_client_piecemeal()
           }
           start_new_token = true; // cur byte is a space, so no longer 
         }
-        else if( char(cur_byte) == char('\r') )
+        else if( char(b) == char('\r') )
         {
           if (cur_line_num == 1 && cur_token_num == 3)
           {
             // This token should be protocol (HTTP) version 
-            if (token.startsWith( F("HTTP") ))
+            if (token.startsWith( "HTTP" ))
             {
               // good to go 
               tcp_reset_receive();
@@ -769,7 +730,7 @@ void process_client_piecemeal()
             else
             {
               // 505  (HTTP Version Not Supported) 
-              fail_request(F("505")); 
+              fail_request("505"); 
             }          
           }
           //          else
@@ -777,7 +738,7 @@ void process_client_piecemeal()
           //            ; // xxx parse other lines of request as needed
           //          }
         }
-        else if(char(cur_byte) == char('\n'))
+        else if(char(b) == char('\n'))
         {        
           cur_line_num++; // increment the \n
           start_new_token = true; // reset just in case spaces at end of last line
@@ -793,38 +754,54 @@ void process_client_piecemeal()
             if (in_request_alert_text)
             {
               // write to SD card
-              if (SD.exists(sd_alert_text_file))
-              {
-                SD.remove(sd_alert_text_file); 
-              }   
+              sd_remove(sd_alert_text_file);
               f = SD.open(sd_alert_text_file, FILE_WRITE);
               if (f)
               {
-                while ( cur_byte != 0xFF )
+                while ( b != 0xFF )
                 {
-                  f.print( char(cur_byte) );
-                  cur_byte = client.read();  
-                  if ( char(cur_byte) == char('&') )
+                  f.print( char(b) );
+                  b = client.read();  
+                  if ( char(b) == '&' )
                   {
                     // end of alert text
                     in_request_alert_text = false;
                     break;
-                  }                 
+                  }   
+                  else if (char(b) == '%')
+                  {
+                    // needs to be url-decoded
+                    url_symbol_buf = "%";
+                    url_symbol_buf += (char)client.read();
+                    url_symbol_buf += (char)client.read();
+                    Serial.println(url_symbol_buf);
+                    decode_url(url_symbol_buf);
+                    Serial.println(url_symbol_buf);
+                    b = url_symbol_buf[0];
+                  }  
+                  else if (char(b) == '+')
+                  {
+                    // needs to be url-decoded
+                    b = ' ';
+                    //Serial.print(b);
+                  }       
                 }
                 f.close();
+                // Need to URL-decode the message.
+                //                decode_url_file(sd_alert_text_file);
               }
               else
               {
-                Serial.println("SD.open failed 1"); 
+                // xxx error
               }
             }
             else
             {
-              if ( char(cur_byte) == char('?') )
+              if ( char(b) == char('?') )
               {
                 // assume first parameter is: "t="
-                cur_byte = client.read();
-                cur_byte = client.read();
+                b = client.read();
+                b = client.read();
                 // beginning of alert text
                 in_request_alert_text = true;   
                 token += "?t=yyy&";             
@@ -839,7 +816,7 @@ void process_client_piecemeal()
                   token = "";
                   start_new_token = false;
                 }
-                token += char(cur_byte);
+                token += char(b);
               }
             }
           }
@@ -853,7 +830,7 @@ void process_client_piecemeal()
               token = "";
               start_new_token = false;
             }
-            token += char(cur_byte);
+            token += char(b);
           }          
         }
       }   
@@ -871,7 +848,7 @@ void process_client_piecemeal()
         else
         {
           // maybe SD card needs to be restarted
-          SD.begin(sd_pin);
+          sd_init();
           if (SD.exists(file_path_name_buf))
           {
             file_exists = true;
@@ -879,7 +856,7 @@ void process_client_piecemeal()
           else
           {
             // 404   
-            fail_request(F("404")); 
+            fail_request("404"); 
           }
         }
       }
@@ -915,8 +892,8 @@ void process_client_piecemeal()
           if (f.available())
           {
             // read a byte, send it
-            //cur_byte = f.read();
-            //server.write( cur_byte );
+            //b = f.read();
+            //server.write( b );
             server.write( f.read() );
           }
           else
@@ -937,17 +914,52 @@ void process_client_piecemeal()
   }
 }
 
+///****************************************************************/
+//// Purpose:
+////
+//// Notes:
+////   File.read() increments File.position()
+//
+//void decode_url_file(char * filename)
+//{
+//  const byte           chunk_size = 6;
+//  String               buf = "";
+//  unsigned short int   byte_index = 0;
+//  unsigned short int   fsize = 0;
+//  bool                 eof = false;
+//
+//  // open file
+//  if (SD.exists(filename))
+//  {
+//    f = SD.open(filename, FILE_READ);
+//    if (f)
+//    {
+//      fsize = f.size();
+//
+//      f.seek(byte_index);
+//      while (f.position() < fsize)
+//      {
+//        buf += f.read();
+//        
+//        buf = "";
+//      }
+//      f.close();
+//    } 
+//  }
+//}
+
 /****************************************************************/
 // order matters
 void decode_url(String & s)
 {
+
   decode_url_1(s, "+", ' ', 0);
-  //  decode_url_1(s, "%2B", '+', 2);
-  //  decode_url_1(s, "%5E", '^', 2);
-  //  decode_url_1(s, "%2C", ',', 2);
-  //  decode_url_1(s, "%3B", ';', 2);
-  //  decode_url_1(s, "%3A", ':', 2);
-  //  decode_url_1(s, "%25", '%', 2);
+  decode_url_1(s, "%2B", '+', 2);
+  decode_url_1(s, "%5E", '^', 2);
+  decode_url_1(s, "%2C", ',', 2);
+  decode_url_1(s, "%3B", ';', 2);
+  decode_url_1(s, "%3A", ':', 2);
+  decode_url_1(s, "%25", '%', 2);
 }
 
 /****************************************************************/
@@ -971,7 +983,7 @@ void decode_url_1(String & s, const String & old, const char & new_, const byte 
 /****************************************************************/
 void fail_request(const String & msg)
 {
-  send_http_header(10, F("text/plain") ); // xxx This takes roughly 50 bytes program memory
+  send_http_header(10, "text/plain" ); // xxx This takes roughly 50 bytes program memory
   server.print(msg); // xxx this takes about 16 bytes program memory
   tcp_reset_send();
   tcp_disconnect();
@@ -1020,10 +1032,10 @@ void tcp_disconnect()
 //  // read in all data from client, then process it.
 //  while (client.available())
 //  {
-//    cur_byte = client.read();
-//    //te(cur_byte);
+//    b = client.read();
+//    //te(b);
 //
-//    if (char(cur_byte) == char(' '))
+//    if (char(b) == char(' '))
 //    {
 //      // space
 //      if (start_new_token)
@@ -1066,7 +1078,7 @@ void tcp_disconnect()
 //        }
 //      }
 //    }
-//    else if (char(cur_byte) == char('\r'))
+//    else if (char(b) == char('\r'))
 //    {
 //      // carriage return
 //      if (start_new_token)
@@ -1091,7 +1103,7 @@ void tcp_disconnect()
 //        }
 //      }
 //    }
-//    else if (char(cur_byte) == char('\n'))
+//    else if (char(b) == char('\n'))
 //    {
 //      // newline
 //      cur_line_num ++;
@@ -1109,7 +1121,7 @@ void tcp_disconnect()
 //        // xxx
 //      }
 //      start_new_token = true;
-//      token += String(char(cur_byte));
+//      token += String(char(b));
 //    }
 //  }// end while
 //
@@ -1174,6 +1186,43 @@ void tcp_disconnect()
 //}
 
 /****************************************************************/
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

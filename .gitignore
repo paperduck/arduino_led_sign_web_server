@@ -1,8 +1,8 @@
-#images
+# images
 sd_card/img/*
 
-# notes
-#notes/*
+# backups
+backups/*
 
 # temp files
 *~
