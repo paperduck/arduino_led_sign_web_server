@@ -1,0 +1,8 @@
+# images
+sd_card/img/*
+
+# backups
+backups/*
+
+# temp files
+*~

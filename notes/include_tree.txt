@@ -1,0 +1,39 @@
+SoftwareSerial.cpp		SoftwareSerial::begin()
+|
+ \
+  avr/interrupt.h
+  |\
+  | avr/io.h>
+  | \
+  |  io*.h
+  |  avr/portpins.h
+  |  avr/common.h
+  |  avr/version.h
+  |  avr/fuse.h
+  |  avr/lock.h
+  |
+  avr/pgmspace.h
+  |\
+  | inttypes.h
+  | stddef.h
+  | avr/io.h ~
+  |
+  Arduino.h
+  |\
+  | stdlib.h
+  | string.h
+  | math.h
+  | avr/pgmspace.h
+  | avr/io.h
+  | avr/interrupt.h
+  | "binary.h"
+  |
+  SoftwareSerial.h
+   \
+    inttypes.h
+    Stream.h
+
+C:\Program Files (x86)\Arduino\drivers\FTDI USB Drivers\ftd2xx.h
+
+
+

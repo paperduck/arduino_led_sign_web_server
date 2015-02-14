@@ -1,0 +1,110 @@
+﻿0		header ?
+ff		header ?
+ff		header ?
+0		header ?
+b
+1
+ff
+1
+30
+31
+[1-25]	moving method
+ef		spacer ?
+[94]	cartoon
+[
+b0		color
+			b0 = Red
+			b1 = Bright Red
+			b2 = Orange
+			b4 = Yellow
+			b6 = Green
+ef		spacer ?
+a2		font
+61		msg
+61		msg
+61		msg
+]
+ff		tail
+ff		tail
+0		tail
+
+
+===
+[7*6 (Default)]
+[Bright Red (Default)]
+[Cartoon 5 = Happy Halloween]
+--
+0 ff ff 0 b 1 ff 1 30 31 ef 94 ff ff 0
+===
+[7*6 (Default)]
+[Red]
+[insert time]
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b1 ef a2 ef 80 ff ff 0
+===
+[Moving Method 19 = Pac Man]
+[7*6 (Default)]
+[Red]
+aaa
+--
+0 ff ff 0 b 1 ff 1 30 31 13 ef b1 ef a2 61 61 61 ff ff 0
+===
+[Moving Method 2 = Immediate]
+[7*6 (Default)]
+[Red]
+aaa
+--
+0 ff ff 0 b 1 ff 1 30 31 2 ef b1 ef a2 61 61 61 ff ff 0
+===
+[7*6 (Default)]
+[Red]
+aaa
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b0 ef a2 61 61 61 ff ff 0
+===
+[Red]
+bbb
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b0 ef a2 62 62 62 ff ff 0
+===
+[Orange]
+aaa
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b2 ef a2 61 61 61 ff ff 0
+===
+[Yellow]
+aaa
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b4 ef a2 61 61 61 ff ff 0
+===
+[Green]
+aaa
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b6 ef a2 61 61 61 ff ff 0
+===
+[5*6 Short]
+[Red]
+aaa
+--
+ 0 ff ff 0 b 1 ff 1 30 31 ef b1 ef a0 61 61 61 ff ff 0
+===
+[5*6 Short]
+[Red]
+aaa*AAA
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b1 ef a0 61 61 61 2a 41 41 41 ff ff 0
+===
+[7*6 (Default)]
+[Red]
+aaa*AAA
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b1 ef a2 61 61 61 2a 41 41 41 ff ff 0
+===
+[7*17 Extra Wide]
+[Red]
+aaa*AAA
+--
+0 ff ff 0 b 1 ff 1 30 31 ef b1 ef a5 61 61 61 2a 41 41 41 ff ff 0
+===
+--
+===
